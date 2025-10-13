@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Панель Модератора | ZERO Help Desk</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        :root{
+            --primary:#4361ee;
+            --primary-600:#3a56d4;
+            --danger:#e63946;
+            --danger-600:#d32f2f;
+            --success:#2a9d8f;
+            --warning:#f4a261;
+
+            --bg:#f4f6f9;
+            --text:#2d3748;
+            --muted:#718096;
+
+            --card:#fff;
+            --border:#e2e8f0;
+
+            --radius:12px;
+            --shadow:0 6px 18px rgba(0,0,0,0.08);
+            --shadow-lg:0 14px 28px rgba(0,0,0,0.12);
+        }
+
+        *{box-sizing:border-box}
+        html,body{height:100%}
+        body{
+            margin:0;
+            background:var(--bg);
+            color:var(--text);
+            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        }
+
+        /* Mobile header (fixed) — hidden by default, visible only on phones */
+        .mobile-header{
+            display:none; /* hidden on desktop/tablet */
+            position:fixed; top:0; left:0; right:0; z-index:1002;
+            background:var(--card);
+            border-bottom:1px solid var(--border);
+            padding:12px 16px;
+            align-items:center; justify-content:center;
+        }
+        .mobile-header .title{
+            margin:0; font-size:16px; color:var(--primary); font-weight:700; text-align:center;
+        }
+
+        /* Desktop layout */
+        .layout{
+            display:flex;
+            min-height:100vh;
+        }
+        .sidebar{
+            width:280px;
+            background:linear-gradient(135deg,#111827,#1f2937);
+            color:#e5e7eb;
+            display:flex;
+            flex-direction:column;
+            padding:20px 0;
+        }
+        .brand{ padding:0 24px 16px; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:16px; }
+        .brand h1{ margin:0; font-size:20px; letter-spacing:.2px; }
+
+        .nav{ display:flex; flex-direction:column; gap:6px; padding:0 8px; }
+        .nav a{
+            display:flex; align-items:center; gap:12px; padding:12px 16px; margin:0 8px;
+            color:#e5e7eb; text-decoration:none; border-radius:10px; transition:.2s ease;
+        }
+        .nav a:hover{ background:rgba(255,255,255,.06); }
+        .nav a.active{ background:var(--primary); color:#fff; box-shadow:0 6px 16px rgba(67,97,238,.35); }
+
+        .sidebar-footer{ margin-top:auto; padding:16px; border-top:1px solid rgba(255,255,255,.08); }
+        .user-badge{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:12px; font-size:14px; }
+        .user-badge .muted{opacity:.8}
+
+        .main{ flex:1; padding:24px; }
+
+        .section{ display:none; }
+        .section.active{ display:block; }
+
+        .toolbar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:12px; }
+
+        .input, select, .date{
+            background:#fff; border:1px solid var(--border);
+            padding:12px 14px;
+            border-radius:10px; outline:none; transition:.2s ease; font-size:14px;
+        }
+        .input:focus, select:focus, .date:focus{ border-color:var(--primary); box-shadow:0 0 0 3px rgba(67,97,238,.15); }
+
+        .btn{
+            background:var(--primary); color:#fff; padding:10px 14px; border:none; border-radius:10px; cursor:pointer; font-weight:600; transition:.2s ease;
+        }
+        .btn:hover{ background:var(--primary-600); transform:translateY(-1px); }
+        .btn.secondary{ background:#e9efff; color:#1f3bb3; }
+        .btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--border); }
+        .btn.danger{ background:var(--danger); }
+        .btn.danger:hover{ background:var(--danger-600); }
+        .btn.success{ background:var(--success); }
+        .btn.small{ padding:8px 12px; font-size:13px; }
+
+        .chips{ display:flex; gap:8px; flex-wrap:wrap; }
+        .chip{ font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; }
+
+        .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; }
+        .card{ background:#fff; border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+        .card .card-header{ padding:16px 16px 0 16px; }
+        .card .card-body{ padding:20px; } /* increased inner padding */
+
+        .table-wrap{ overflow:auto; border-radius:12px; }
+        table{ width:100%; border-collapse:collapse; }
+        th,td{ text-align:left; padding:12px; border-bottom:1px solid var(--border); font-size:14px; vertical-align:top; }
+        thead th{ background:#f8fafc; position:sticky; top:0; z-index:1; }
+        tr:hover td{ background:#fafcff; }
+
+        .status{ display:inline-block; padding:6px 10px; border-radius:999px; color:#fff; font-weight:600; font-size:12px; line-height:1; }
+        .s-New{ background:var(--primary); }
+        .s-In\ Progress{ background:var(--warning); }
+        .s-Successful{ background:var(--success); }
+        .s-Rejected{ background:var(--danger); }
+        .s-On\ Hold{ background:#7209b7; }
+
+        /* Desktop chat panel */
+        .chat{ display:flex; flex-direction:column; height:560px; }
+        .chat-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:16px; border-bottom:1px solid var(--border); }
+        .chat-title{ margin:0; font-size:16px; }
+        .chat-meta{ font-size:13px; color:var(--muted); }
+        .chat-box{ flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; background:linear-gradient(180deg,#fff 0%, #fbfcff 100%); }
+
+        .msg{ max-width:80%; padding:12px 14px; border-radius:14px; box-shadow:var(--shadow); position:relative; display:flex; flex-direction:column; gap:6px; animation:fadeIn .2s ease; }
+        .msg.me{ align-self:flex-end; background:var(--primary); color:#fff; border-bottom-right-radius:6px; }
+        .msg.other{ align-self:flex-start; background:#f1f5f9; color:var(--text); border-bottom-left-radius:6px; }
+        .msg .meta{ font-size:12px; opacity:.8; }
+        .msg .attach img, .msg .attach video{ max-width:280px; border-radius:10px; display:block; }
+
+        .chat-actions{ border-top:1px solid var(--border); padding:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#fff; }
+        .chat-actions .input{ flex:1; }
+
+        .preview{ background:#f8fafc; border:1px dashed var(--border); border-radius:10px; padding:10px; display:none; gap:10px; align-items:center; }
+        .preview.show{ display:flex; }
+        .preview img, .preview video{ max-height:100px; border-radius:6px; }
+
+        .banner{ background:#fff3cd; color:#8a6d3b; padding:8px 12px; font-size:13px; border-top:1px solid #ffe8a1; border-bottom:1px solid #ffe8a1; }
+
+        /* Mobile bottom tab bar (fixed) */
+        .mobile-tab-bar{
+            position:fixed; left:0; right:0; bottom:0; z-index:1001;
+            display:none; gap:0; align-items:center; justify-content:space-around;
+            background:#fff; border-top:1px solid var(--border);
+            padding:10px 6px calc(10px + env(safe-area-inset-bottom));
+            box-shadow:0 -8px 16px rgba(0,0,0,.06);
+        }
+        .tab-item{ flex:1; text-align:center; color:var(--muted); text-decoration:none; font-size:12px; display:flex; flex-direction:column; align-items:center; gap:4px; }
+        .tab-item i{ font-style:normal; font-size:18px; }
+        .tab-item.active{ color:var(--primary); font-weight:600; }
+
+        /* Mobile chat modal */
+        .mchat-modal{
+            display:none; position:fixed; inset:0; z-index:1003; background:rgba(0,0,0,.45);
+        }
+        .mchat-wrap{
+            position:absolute; inset:0; background:#fff; display:flex; flex-direction:column;
+        }
+        .mchat-head{
+            position:sticky; top:0; z-index:2; background:#f8f9fb; border-bottom:1px solid var(--border);
+            display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 14px;
+        }
+        .mchat-title{ margin:0; font-size:15px; font-weight:700; color:var(--text); }
+        .mchat-sub{ font-size:12px; color:var(--muted); }
+        .mchat-close{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 10px; cursor:pointer; }
+
+        /* NEW: mobile status bar (for changing status inside mobile chat) */
+        .mstatus-bar{
+            display:flex; gap:8px; align-items:center;
+            padding:10px 12px; border-bottom:1px solid var(--border); background:#fff;
+        }
+        .mstatus-info{
+            padding:6px 12px 8px; color:var(--muted); font-size:12px;
+        }
+
+        .mchat-box{ flex:1; overflow:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
+        .mmsg{ max-width:85%; padding:10px 12px; border-radius:14px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:6px; }
+        .mmsg.me{ align-self:flex-end; background:var(--primary); color:#fff; border-bottom-right-radius:6px; }
+        .mmsg.other{ align-self:flex-start; background:#f1f5f9; color:var(--text); border-bottom-left-radius:6px; }
+        .mmsg .meta{ font-size:11px; opacity:.85; }
+        .mmsg .attach img, .mmsg .attach video{ max-width:70vw; border-radius:10px; display:block; }
+
+        .mchat-actions{
+            position:sticky; bottom:0; z-index:2; background:#fff; border-top:1px solid var(--border);
+            padding:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+        }
+        .mchat-actions .input{ flex:1; }
+
+        .mpreview{ background:#f8fafc; border:1px dashed var(--border); border-radius:10px; padding:8px; display:none; gap:8px; align-items:center; margin:8px 10px 10px; }
+        .mpreview.show{ display:flex; }
+        .mpreview img, .mpreview video{ max-height:90px; border-radius:6px; }
+
+        /* Reusable modal (edit user) */
+        .modal-overlay{
+            display:none; position:fixed; inset:0; z-index:1004; background:rgba(0,0,0,.45);
+            align-items:center; justify-content:center; padding:20px;
+        }
+        .modal-panel{
+            background:#fff; border:1px solid var(--border); border-radius:14px;
+            box-shadow:var(--shadow-lg); width:100%; max-width:520px; overflow:hidden;
+        }
+        .modal-head{
+            padding:12px 16px; background:#f8f9fb; border-bottom:1px solid var(--border);
+            display:flex; align-items:center; justify-content:space-between; gap:8px;
+        }
+        .modal-title{ margin:0; font-size:16px; font-weight:700; color:var(--text); }
+        .modal-close{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 10px; cursor:pointer; }
+        .modal-body{ padding:18px; }
+        .modal-body .stack{ display:flex; flex-direction:column; gap:14px; }
+        .modal-footer{ padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+
+        /* Tablets */
+        @media (max-width: 1100px){
+            .grid{ grid-template-columns:1fr; }
+            .chat{ height:auto; }
+        }
+
+        /* Phones (<= 768px) */
+        @media (max-width: 768px){
+            .mobile-header{ display:flex; } /* show header only on phones */
+            .sidebar{ display:none !important; } /* remove sidebar on mobiles */
+            .main{ padding:72px 16px 96px; } /* header + bottom tabs space */
+            .mobile-tab-bar{ display:flex; }
+            .toolbar{ flex-direction:column; align-items:stretch; gap:10px; }
+            thead th{ position:static; }
+            /* IMPORTANT: hide desktop chat panel on phones entirely */
+            #chat-panel{ display:none !important; }
+        }
+
+        /* Small phones (<= 480px) */
+        @media (max-width: 480px){
+            .main{ padding:72px 12px 98px; }
+            .btn{ padding:9px 12px; font-size:13px; }
+            .input, select, .date{ padding:10px 12px; font-size:13px; }
+            th,td{ padding:10px; font-size:13px; }
+
+            /* Hide less-critical columns for tight width */
+            #tickets-table th.col-user, #tickets-table td.col-user,
+            #tickets-table th.col-created, #tickets-table td.col-created { display:none; }
+
+            #users-table th.col-phone, #users-table td.col-phone,
+            #users-table th.col-created-users, #users-table td.col-created-users { display:none; }
+
+            #report-table th.col-moderator, #report-table td.col-moderator,
+            #report-table th.col-closed, #report-table td.col-closed { display:none; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Fixed mobile header (phones only by CSS) -->
+    <div class="mobile-header">
+        <h1 class="title">ZERO 🛡️ Help Desk — Модератор</h1>
+    </div>
+
+    <div class="layout">
+        <!-- Desktop sidebar (hidden on mobile by CSS) -->
+        <aside class="sidebar">
+            <div class="brand"><h1>ZERO 🛡️ Help Desk</h1></div>
+            <nav class="nav">
+                <a href="#" class="nav-link active" data-section="tickets">🎫 Заявки</a>
+                <a href="#" class="nav-link" data-section="users">👥 Пользователи</a>
+                <a href="#" class="nav-link" data-section="reports">📈 Отчёты</a>
+                <a href="#" class="nav-link" data-section="profile">👤 Профиль</a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-badge">
+                    <div><strong id="me-username">...</strong></div>
+                    <div class="muted" id="me-role">роль: ...</div>
+                </div>
+                <div class="row" style="margin-top:10px;">
+                    <button class="btn ghost" id="btn-logout">Выйти</button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <!-- TICKETS -->
+            <section class="section active" id="sec-tickets">
+                <div class="toolbar">
+                    <div class="row">
+                        <input class="input" id="search" placeholder="Поиск по теме/пользователю..."/>
+                        <select id="filter-status" class="input">
+                            <option value="">Все статусы</option>
+                            <option value="New">Новые</option>
+                            <option value="In Progress">В работе</option>
+                            <option value="On Hold">На согласовании</option>
+                            <option value="Successful">Успешные</option>
+                            <option value="Rejected">Отклонённые</option>
+                        </select>
+                        <button class="btn" id="btn-reload">Обновить</button>
+                    </div>
+                    <div class="chips">
+                        <span class="chip">Всего: <span id="stat-total">0</span></span>
+                        <span class="chip">Новые: <span id="stat-new">0</span></span>
+                        <span class="chip">В работе: <span id="stat-ip">0</span></span>
+                    </div>
+                </div>
+
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-wrap">
+                                <table id="tickets-table">
+                                    <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th class="col-user">Пользователь</th>
+                                        <th>Тема</th>
+                                        <th>Статус</th>
+                                        <th class="col-created">Создан</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop chat panel (auto-hidden on phones via CSS) -->
+                    <div class="card chat" id="chat-panel">
+                        <div class="chat-head">
+                            <div>
+                                <h3 class="chat-title">Чат: <span id="chat-ticket-id">—</span></h3>
+                                <div class="chat-meta">
+                                    Тема: <span id="chat-ticket-subject">—</span><br/>
+                                    Клиент ID: <span id="chat-user-id">—</span> • Текущий статус: <strong id="current-status">—</strong>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="row">
+                                    <select id="status-select" class="input">
+                                        <option value="In Progress">В работе</option>
+                                        <option value="On Hold">На согласовании</option>
+                                        <option value="Successful">Успешно</option>
+                                        <option value="Rejected">Отклонено</option>
+                                    </select>
+                                    <button class="btn success" id="update-status-button">Обновить</button>
+                                </div>
+                                <div class="muted" id="time-spent-display" style="margin-top:6px; display:none;"></div>
+                            </div>
+                        </div>
+
+                        <div id="chat-closed-banner" class="banner" style="display:none;">
+                            Чат завершён. Новые сообщения отправлять нельзя — доступен только просмотр переписки и вложений.
+                        </div>
+
+                        <div id="chat-box" class="chat-box"></div>
+
+                        <div class="card-body" style="border-top:1px solid var(--border);">
+                            <div class="stack">
+                                <div class="chat-actions" id="chat-actions">
+                                    <input class="input" id="chat-input" placeholder="Ваш ответ...">
+                                    <input type="file" id="chat-attachment" accept="image/*,video/*" style="display:none;">
+                                    <button class="btn ghost" id="btn-pick">📎 Файл</button>
+                                    <button class="btn ghost" id="btn-photo">📷 Фото</button>
+                                    <button class="btn ghost" id="btn-video">🎥 Видео</button>
+                                    <button class="btn" id="chat-send-button">Отправить</button>
+                                </div>
+                                <div class="preview" id="preview">
+                                    <div id="preview-thumb"></div>
+                                    <div class="row">
+                                        <button class="btn ghost" id="btn-clear-preview">Убрать</button>
+                                    </div>
+                                </div>
+                                <div class="muted" id="chat-hint">Подсказка: статус "Новые" автоматически сменится на "В работе" при первом ответе модератора.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- USERS -->
+            <section class="section" id="sec-users">
+                <div class="toolbar">
+                    <div class="row">
+                        <button class="btn" id="btn-reload-users">Обновить список</button>
+                    </div>
+                    <div class="chips">
+                        <span class="chip">Пользователей: <span id="users-total">0</span></span>
+                    </div>
+                </div>
+
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-wrap">
+                                <table id="users-table">
+                                    <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Логин</th>
+                                        <th>ФИО</th>
+                                        <th class="col-phone">Телефон</th>
+                                        <th>Роль</th>
+                                        <th class="col-created-users">Создан</th>
+                                        <th>Действие</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><h3>Создать пользователя</h3></div>
+                        <div class="card-body">
+                            <div class="stack">
+                                <div class="form-grid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+                                    <input class="input" id="new-username" placeholder="Логин" />
+                                    <input class="input" id="new-password" placeholder="Пароль" type="password" />
+                                    <input class="input" id="new-fullname" placeholder="ФИО" />
+                                    <input class="input" id="new-phone" placeholder="Телефон" />
+                                    <select id="new-role" class="input">
+                                        <option value="user">user</option>
+                                        <option value="moderator">moderator</option>
+                                    </select>
+                                    <div class="row" style="grid-column:1/-1; gap:12px;">
+                                        <button class="btn" id="btn-create-user">Создать</button>
+                                        <div class="muted" id="create-user-msg"></div>
+                                    </div>
+                                </div>
+                                <div class="muted">Примечание: создание пользователя может быть ограничено правами. В случае ошибки проверьте роль и доступы.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- REPORTS -->
+            <section class="section" id="sec-reports">
+                <div class="toolbar">
+                    <div class="row">
+                        <input type="date" class="date" id="start_date" />
+                        <input type="date" class="date" id="end_date" />
+                        <button class="btn" id="btn-make-report">Сформировать</button>
+                        <button class="btn ghost" id="btn-print" disabled>Печать</button>
+                    </div>
+                </div>
+
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-header"><h3>Сводка</h3></div>
+                        <div class="card-body" id="report-summary">
+                            <div class="muted">Укажите период и нажмите "Сформировать".</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><h3>Детализация</h3></div>
+                        <div class="card-body">
+                            <div class="table-wrap">
+                                <table id="report-table">
+                                    <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Тема</th>
+                                        <th>Статус</th>
+                                        <th>Пользователь</th>
+                                        <th class="col-moderator">Модератор</th>
+                                        <th>Создан</th>
+                                        <th class="col-closed">Закрыт</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div class="muted" id="report-message"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROFILE -->
+            <section class="section" id="sec-profile">
+                <div class="card">
+                    <div class="card-body">
+                        <h3>Мой профиль</h3>
+                        <p class="muted">Вы вошли как: <strong id="profile-username">—</strong> (<span id="profile-role">—</span>)</p>
+                        <div class="row">
+                            <button class="btn danger" id="logout-2">Выйти</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Fixed mobile bottom tabs -->
+    <div class="mobile-tab-bar" id="mobile-tab-bar">
+        <a href="#" class="tab-item active" data-section="tickets"><i>🎫</i><span>Заявки</span></a>
+        <a href="#" class="tab-item" data-section="users"><i>👥</i><span>Польз.</span></a>
+        <a href="#" class="tab-item" data-section="reports"><i>📈</i><span>Отчёты</span></a>
+        <a href="#" class="tab-item" data-section="profile"><i>👤</i><span>Профиль</span></a>
+    </div>
+
+    <!-- Mobile chat modal (opens on phones like in user app) -->
+    <div class="mchat-modal" id="mchat-modal" aria-hidden="true">
+        <div class="mchat-wrap">
+            <div class="mchat-head">
+                <button class="mchat-close" id="mchat-close">← Назад</button>
+                <div style="flex:1; min-width:0;">
+                    <div class="mchat-title">Чат #<span id="mchat-ticket-id">—</span></div>
+                    <div class="mchat-sub">Тема: <span id="mchat-ticket-subject">—</span></div>
+                </div>
+                <span class="mchat-sub">Статус: <strong id="mchat-status">—</strong></span>
+            </div>
+
+            <!-- NEW: status controls inside mobile chat -->
+            <div class="mstatus-bar">
+                <select id="mstatus-select" class="input" style="flex:1;">
+                    <option value="In Progress">В работе</option>
+                    <option value="On Hold">На согласовании</option>
+                    <option value="Successful">Успешно</option>
+                    <option value="Rejected">Отклонено</option>
+                </select>
+                <button class="btn success small" id="mupdate-status-button">Обновить</button>
+            </div>
+            <div class="mstatus-info" id="mtime-spent-display" style="display:none;"></div>
+
+            <div id="mchat-closed-banner" class="banner" style="display:none;">
+                Чат завершён. Новые сообщения отправлять нельзя.
+            </div>
+
+            <div class="mchat-box" id="mchat-box"></div>
+
+            <div class="mchat-actions" id="mchat-actions">
+                <input class="input" id="mchat-input" placeholder="Ваш ответ...">
+                <input type="file" id="mchat-attachment" accept="image/*,video/*" style="display:none;">
+                <button class="btn ghost small" id="mbtn-pick">📎</button>
+                <button class="btn ghost small" id="mbtn-photo">📷</button>
+                <button class="btn ghost small" id="mbtn-video">🎥</button>
+                <button class="btn small" id="mchat-send">Отпр.</button>
+            </div>
+            <div class="mpreview" id="mpreview">
+                <div id="mpreview-thumb"></div>
+                <button class="btn ghost small" id="mbtn-clear-preview">Убрать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit user modal (admin only) -->
+    <div class="modal-overlay" id="edit-user-modal" aria-hidden="true">
+        <div class="modal-panel">
+            <div class="modal-head">
+                <div class="modal-title">Редактирование пользователя</div>
+                <button class="modal-close" id="edit-user-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="stack">
+                    <input class="input" id="edit-user-id" placeholder="ID" disabled>
+                    <input class="input" id="edit-user-fullname" placeholder="ФИО">
+                    <input class="input" id="edit-user-phone" placeholder="Телефон">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="edit-user-save">Сохранить</button>
+                <div class="muted" id="edit-user-status"></div>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const API_BASE = 'http://localhost:3000/api';
+const socket = io('http://localhost:3000', { withCredentials:true });
+
+/* Auth and navigation */
+const meUsernameEl = document.getElementById('me-username');
+const meRoleEl = document.getElementById('me-role');
+const profileUsername = document.getElementById('profile-username');
+const profileRole = document.getElementById('profile-role');
+
+let me = { userId:null, username:null, role:null };
+
+async function ensureModerator() {
+    try{
+        const res = await fetch(`${API_BASE}/auth/status`, { credentials:'include' });
+        if (!res.ok) throw new Error('auth');
+        const data = await res.json();
+        if (!data.isLoggedIn || !['moderator','admin'].includes(data.role)) throw new Error('role');
+        me = { userId:data.userId, username:data.username, role:data.role };
+        meUsernameEl.textContent = data.username;
+        meRoleEl.textContent = `роль: ${data.role}`;
+        profileUsername.textContent = data.username;
+        profileRole.textContent = data.role;
+    }catch(e){
+        location.href = '/';
+    }
+}
+ensureModerator();
+
+/* Section switching + fixed mobile tabs */
+function activateSection(sec){
+    document.querySelectorAll('.nav a').forEach(x=>x.classList.toggle('active', x.dataset.section===sec));
+    document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active', s.id === `sec-${sec}`));
+    document.querySelectorAll('.mobile-tab-bar .tab-item').forEach(t=>t.classList.toggle('active', t.dataset.section===sec));
+    if (sec==='tickets') reloadTickets();
+    if (sec==='users') loadUsers();
+}
+document.querySelectorAll('.nav a').forEach(a=>{
+    a.addEventListener('click', e=>{ e.preventDefault(); activateSection(a.dataset.section); });
+});
+document.querySelectorAll('.mobile-tab-bar .tab-item').forEach(t=>{
+    t.addEventListener('click', e=>{ e.preventDefault(); activateSection(t.dataset.section); });
+});
+
+document.getElementById('btn-logout').onclick = doLogout;
+document.getElementById('logout-2').onclick = doLogout;
+async function doLogout(){ try{ await fetch(`${API_BASE}/auth/logout`, { method:'POST', credentials:'include' }); } finally{ location.href = '/'; } }
+
+/* Tickets list */
+const ticketsTableBody = document.querySelector('#tickets-table tbody');
+const searchInput = document.getElementById('search');
+const filterStatus = document.getElementById('filter-status');
+const btnReload = document.getElementById('btn-reload');
+
+let allTickets = [];
+btnReload.addEventListener('click', reloadTickets);
+searchInput.addEventListener('input', renderTickets);
+filterStatus.addEventListener('change', renderTickets);
+
+async function reloadTickets(){
+    try{
+        const res = await fetch(`${API_BASE}/tickets/all`, { credentials:'include' });
+        allTickets = res.ok ? await res.json() : [];
+        renderTickets();
+    }catch(e){ console.warn(e); }
+}
+
+function renderTickets(){
+    const q = (searchInput.value || '').toLowerCase().trim();
+    const fs = filterStatus.value;
+    const filtered = allTickets.filter(t=>{
+        const matchesQ = !q || `${t.subject} ${t.user_username} ${t.user_full_name}`.toLowerCase().includes(q);
+        const matchesS = !fs || t.status === fs;
+        return matchesQ && matchesS;
+    });
+
+    // Stats
+    document.getElementById('stat-total').textContent = filtered.length;
+    document.getElementById('stat-new').textContent = filtered.filter(t=>t.status==='New').length;
+    document.getElementById('stat-ip').textContent = filtered.filter(t=>t.status==='In Progress').length;
+
+    ticketsTableBody.innerHTML = '';
+    for(const t of filtered){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${t.id}</td>
+            <td class="col-user">
+                <div><strong>${escapeHtml(t.user_username || '')}</strong></div>
+                <div class="muted">${escapeHtml(t.user_full_name || '')}</div>
+                <div class="muted">${escapeHtml(t.user_phone || '')}</div>
+            </td>
+            <td>${escapeHtml(t.subject || '')}</td>
+            <td><span class="status s-${(t.status || '').replaceAll(' ','\\ ')}">${t.status || ''}</span></td>
+            <td class="muted col-created">${formatDate(t.created_at)}</td>
+            <td>
+                <div class="row">
+                    <button class="btn small" data-open data-id="${t.id}">Открыть чат</button>
+                </div>
+            </td>
+        `;
+        ticketsTableBody.appendChild(tr);
+    }
+
+    ticketsTableBody.querySelectorAll('[data-open]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+            const id = Number(btn.dataset.id);
+            const t = allTickets.find(x=>x.id===id);
+            if (t) openChat(t);
+        });
+    });
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function formatDate(d){ try{ return new Date(d).toLocaleString(); }catch{ return d || ''; } }
+function isMobile(){ return window.matchMedia('(max-width: 768px)').matches; }
+
+/* Chat (desktop + mobile modal) */
+let activeTicket = null;
+
+const d = {
+  box: document.getElementById('chat-box'),
+  ticketId: document.getElementById('chat-ticket-id'),
+  subject: document.getElementById('chat-ticket-subject'),
+  userId: document.getElementById('chat-user-id'),
+  status: document.getElementById('current-status'),
+  statusSelect: document.getElementById('status-select'),
+  updateStatusBtn: document.getElementById('update-status-button'),
+  timeSpent: document.getElementById('time-spent-display'),
+  closedBanner: document.getElementById('chat-closed-banner'),
+  actions: document.getElementById('chat-actions'),
+  input: document.getElementById('chat-input'),
+  file: document.getElementById('chat-attachment'),
+  btnPick: document.getElementById('btn-pick'),
+  btnPhoto: document.getElementById('btn-photo'),
+  btnVideo: document.getElementById('btn-video'),
+  btnSend: document.getElementById('chat-send-button'),
+  preview: document.getElementById('preview'),
+  previewThumb: document.getElementById('preview-thumb'),
+  btnClearPreview: document.getElementById('btn-clear-preview')
+};
+
+const m = {
+  modal: document.getElementById('mchat-modal'),
+  close: document.getElementById('mchat-close'),
+  box: document.getElementById('mchat-box'),
+  ticketId: document.getElementById('mchat-ticket-id'),
+  subject: document.getElementById('mchat-ticket-subject'),
+  status: document.getElementById('mchat-status'),
+  statusSelect: document.getElementById('mstatus-select'),
+  updateStatusBtn: document.getElementById('mupdate-status-button'),
+  timeSpent: document.getElementById('mtime-spent-display'),
+  closedBanner: document.getElementById('mchat-closed-banner'),
+  actions: document.getElementById('mchat-actions'),
+  input: document.getElementById('mchat-input'),
+  file: document.getElementById('mchat-attachment'),
+  btnPick: document.getElementById('mbtn-pick'),
+  btnPhoto: document.getElementById('mbtn-photo'),
+  btnVideo: document.getElementById('mbtn-video'),
+  btnSend: document.getElementById('mchat-send'),
+  preview: document.getElementById('mpreview'),
+  previewThumb: document.getElementById('mpreview-thumb'),
+  btnClearPreview: document.getElementById('mbtn-clear-preview')
+};
+
+function openChat(ticket){
+    activeTicket = ticket;
+    if (isMobile()){
+        openMobileChat(ticket);
+    } else {
+        openDesktopChat(ticket);
+    }
+}
+
+function openDesktopChat(t){
+    d.ticketId.textContent = t.id;
+    d.subject.textContent = t.subject || '';
+    d.userId.textContent = t.user_id || '-';
+    d.status.textContent = t.status || '—';
+
+    const isClosed = ['Successful','Rejected'].includes(t.status);
+    d.closedBanner.style.display = isClosed ? '' : 'none';
+    d.actions.style.display = isClosed ? 'none' : 'flex';
+
+    socket.emit('joinTicket', t.id);
+    loadMessagesTo(t.id, d.box, false);
+}
+
+function openMobileChat(t){
+    m.ticketId.textContent = t.id;
+    m.subject.textContent = t.subject || '';
+    m.status.textContent = t.status || '—';
+
+    // set mobile status selector to current
+    const allowed = ['In Progress','On Hold','Successful','Rejected'];
+    m.statusSelect.value = allowed.includes(t.status) ? t.status : 'In Progress';
+
+    const isClosed = ['Successful','Rejected'].includes(t.status);
+    m.closedBanner.style.display = isClosed ? '' : 'none';
+    m.actions.style.display = isClosed ? 'none' : 'flex';
+
+    m.timeSpent.style.display = 'none';
+    m.timeSpent.textContent = '';
+
+    m.modal.style.display = 'block';
+    socket.emit('joinTicket', t.id);
+    loadMessagesTo(t.id, m.box, true);
+}
+
+m.close.addEventListener('click', ()=>{ closeMobileChat(); });
+function closeMobileChat(){
+    m.modal.style.display = 'none';
+    m.box.innerHTML = '';
+    m.input.value = '';
+    m.file.value = '';
+    m.previewThumb.innerHTML = '';
+    m.preview.classList.remove('show');
+}
+
+/* Load and render messages */
+async function loadMessagesTo(ticketId, container, isMobileChat){
+    container.innerHTML = '';
+    try{
+        const res = await fetch(`${API_BASE}/tickets/${ticketId}/messages`, { credentials:'include' });
+        const list = res.ok ? await res.json() : [];
+        for(const msg of list){
+            appendMessageTo(msg, container, isMobileChat);
+        }
+        container.scrollTop = container.scrollHeight;
+    }catch(e){ console.warn(e); }
+}
+
+function appendMessageTo(mg, container, isMobileChat){
+    const isMe = mg.senderRole === 'moderator' || mg.senderRole === 'admin';
+    const el = document.createElement('div');
+    el.className = `${isMobileChat ? 'mmsg':'msg'} ${isMe ? 'me':'other'}`;
+
+    let attach = '';
+    if (mg.attachmentUrl){
+        const url = mg.attachmentUrl;
+        const img = /\.(png|jpe?g|gif|webp)$/i.test(url);
+        const vid = /\.(mp4|webm|ogg|mov)$/i.test(url);
+        if (img) attach = `<div class="attach"><img src="${url}" alt="attach"></div>`;
+        else if (vid) attach = `<div class="attach"><video src="${url}" controls></video></div>`;
+        else attach = `<div class="attach"><a href="${url}" target="_blank">📎 Вложение</a></div>`;
+    }
+
+    el.innerHTML = `
+        ${mg.messageText ? `<div>${escapeHtml(mg.messageText)}</div>`:''}
+        ${attach}
+        <div class="meta">${escapeHtml(mg.senderUsername || mg.senderRole || '')} • ${formatDate(mg.createdAt)}</div>
+    `;
+    container.appendChild(el);
+}
+
+/* Status update (desktop) */
+d.updateStatusBtn.addEventListener('click', async ()=>{
+    if (!activeTicket) return;
+    const newStatus = d.statusSelect.value;
+    await updateStatusCommon(newStatus, false);
+});
+
+/* NEW: Status update (mobile) */
+m.updateStatusBtn.addEventListener('click', async ()=>{
+    if (!activeTicket) return;
+    const newStatus = m.statusSelect.value;
+    await updateStatusCommon(newStatus, true);
+});
+
+async function updateStatusCommon(newStatus, isMobileUI){
+    try{
+        const res = await fetch(`${API_BASE}/tickets/update-status`, {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            credentials:'include',
+            body: JSON.stringify({ ticketId: activeTicket.id, newStatus })
+        });
+        const data = res.ok ? await res.json() : { message: await res.text() };
+        if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
+
+        // apply UI updates
+        if (isMobileUI){
+            m.status.textContent = data.newStatus || newStatus;
+            if (data.timeSpent){
+                m.timeSpent.style.display = '';
+                m.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
+            }
+            const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
+            m.closedBanner.style.display = closed ? '' : 'none';
+            m.actions.style.display = closed ? 'none' : 'flex';
+        }else{
+            d.status.textContent = data.newStatus || newStatus;
+            if (data.timeSpent){
+                d.timeSpent.style.display = '';
+                d.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
+            }
+            const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
+            d.closedBanner.style.display = closed ? '' : 'none';
+            d.actions.style.display = closed ? 'none' : 'flex';
+        }
+
+        // refresh list + activeTicket
+        await reloadTickets();
+        const found = allTickets.find(x=>x.id===activeTicket.id);
+        if (found) activeTicket = found;
+    }catch(e){
+        alert(e.message || 'Ошибка обновления статуса');
+    }
+}
+
+/* Desktop send */
+d.btnPick.onclick = ()=>{ if (d.actions.style.display==='none') return; d.file.accept='image/*,video/*'; d.file.removeAttribute('capture'); d.file.click(); };
+d.btnPhoto.onclick = ()=>{ if (d.actions.style.display==='none') return; d.file.accept='image/*'; d.file.setAttribute('capture','environment'); d.file.click(); };
+d.btnVideo.onclick = ()=>{ if (d.actions.style.display==='none') return; d.file.accept='video/*'; d.file.setAttribute('capture','environment'); d.file.click(); };
+d.btnClearPreview.onclick = ()=>{ d.file.value=''; d.previewThumb.innerHTML=''; d.preview.classList.remove('show'); };
+d.file.addEventListener('change', ()=> handlePreview(d.file, d.preview, d.previewThumb));
+d.btnSend.addEventListener('click', ()=> sendMessage(false));
+d.input.addEventListener('keydown', (e)=>{ if (d.actions.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(false); }});
+
+/* Mobile send */
+m.btnPick.onclick = ()=>{ if (m.actions.style.display==='none') return; m.file.accept='image/*,video/*'; m.file.removeAttribute('capture'); m.file.click(); };
+m.btnPhoto.onclick = ()=>{ if (m.actions.style.display==='none') return; m.file.accept='image/*'; m.file.setAttribute('capture','environment'); m.file.click(); };
+m.btnVideo.onclick = ()=>{ if (m.actions.style.display==='none') return; m.file.accept='video/*'; m.file.setAttribute('capture','environment'); m.file.click(); };
+
+m.btnClearPreview.onclick = ()=>{ m.file.value=''; m.previewThumb.innerHTML=''; m.preview.classList.remove('show'); };
+m.file.addEventListener('change', ()=> handlePreview(m.file, m.preview, m.previewThumb));
+m.btnSend.addEventListener('click', ()=> sendMessage(true));
+m.input.addEventListener('keydown', (e)=>{ if (m.actions.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(true); }});
+
+/* Preview helper */
+function handlePreview(fileInput, wrap, thumb){
+    const f = fileInput.files?.[0];
+    thumb.innerHTML = '';
+    if (!f){ wrap.classList.remove('show'); return; }
+    const isImg = (f.type||'').startsWith('image/');
+    const isVid = (f.type||'').startsWith('video/');
+    if (isImg){
+        const img = new Image(); img.src = URL.createObjectURL(f); img.onload = ()=> URL.revokeObjectURL(img.src);
+        img.style.maxHeight = '100px'; img.style.borderRadius='6px'; thumb.appendChild(img);
+    }else if (isVid){
+        const v = document.createElement('video'); v.src = URL.createObjectURL(f); v.controls = true; v.style.maxHeight='100px'; v.style.borderRadius='6px';
+        v.onloadeddata = ()=> URL.revokeObjectURL(v.src); thumb.appendChild(v);
+    }else{
+        thumb.textContent = f.name;
+    }
+    wrap.classList.add('show');
+    fileInput.accept='image/*,video/*'; fileInput.setAttribute('capture','environment');
+}
+
+/* Send message (both UIs) */
+async function sendMessage(isMobileUI){
+    if (!activeTicket) return;
+    const ui = isMobileUI ? m : d;
+    if (ui.actions.style.display==='none') return;
+
+    const text = ui.input.value.trim();
+    const file = ui.file.files?.[0] || null;
+    if (!text && !file) return;
+
+    try{
+        let res;
+        if (file){
+            const fd = new FormData();
+            fd.set('ticketId', String(activeTicket.id));
+            if (text) fd.set('messageText', text);
+            fd.set('attachment', file);
+            res = await fetch(`${API_BASE}/tickets/messages/send`, { method:'POST', body: fd, credentials:'include' });
+        }else{
+            res = await fetch(`${API_BASE}/tickets/messages/send`, {
+                method:'POST',
+                headers:{ 'Content-Type':'application/json' },
+                credentials:'include',
+                body: JSON.stringify({ ticketId: activeTicket.id, messageText: text })
+            });
+        }
+        const data = res.ok ? await res.json() : { message: await res.text() };
+        if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
+
+        ui.input.value = '';
+        ui.file.value = '';
+        ui.previewThumb.innerHTML = '';
+        ui.preview.classList.remove('show');
+
+        if (isMobileUI) {
+            await loadMessagesTo(activeTicket.id, m.box, true);
+            m.box.scrollTop = m.box.scrollHeight;
+        } else {
+            await loadMessagesTo(activeTicket.id, d.box, false);
+            d.box.scrollTop = d.box.scrollHeight;
+        }
+    }catch(e){ alert(e.message || 'Ошибка отправки сообщения'); }
+}
+
+/* Socket updates */
+socket.on('messageCreated', (payload)=>{
+    if (!activeTicket || payload?.ticketId !== activeTicket.id || !payload.message) return;
+    if (m.modal.style.display === 'block'){
+        appendMessageTo(payload.message, m.box, true);
+        m.box.scrollTop = m.box.scrollHeight;
+    } else {
+        appendMessageTo(payload.message, d.box, false);
+        d.box.scrollTop = d.box.scrollHeight;
+    }
+});
+
+/* USERS */
+const usersTableBody = document.querySelector('#users-table tbody');
+const btnReloadUsers = document.getElementById('btn-reload-users');
+const btnCreateUser = document.getElementById('btn-create-user');
+const createUserMsg = document.getElementById('create-user-msg');
+
+// Admin edit modal
+const editModal = document.getElementById('edit-user-modal');
+const editClose = document.getElementById('edit-user-close');
+const editUserId = document.getElementById('edit-user-id');
+const editUserFullname = document.getElementById('edit-user-fullname');
+const editUserPhone = document.getElementById('edit-user-phone');
+const editUserSave = document.getElementById('edit-user-save');
+const editUserStatus = document.getElementById('edit-user-status');
+
+btnReloadUsers.addEventListener('click', loadUsers);
+
+async function loadUsers(){
+    try{
+        const res = await fetch(`${API_BASE}/admin/users`, { credentials:'include' });
+        const users = res.ok ? await res.json() : [];
+        usersTableBody.innerHTML = '';
+        for(const u of users){
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${u.id}</td>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.full_name || '')}</td>
+                <td class="col-phone">${escapeHtml(u.phone_number || '')}</td>
+                <td>${escapeHtml(u.role)}</td>
+                <td class="muted col-created-users">${formatDate(u.created_at)}</td>
+                <td>
+                    ${me.role==='admin' ? `<button class="btn small secondary" data-edit="${u.id}">Изм.</button>` : '<span class="muted">—</span>'}
+                </td>
+            `;
+            usersTableBody.appendChild(tr);
+        }
+        document.getElementById('users-total').textContent = users.length;
+
+        if (me.role==='admin'){
+            usersTableBody.querySelectorAll('[data-edit]').forEach(btn=>{
+                btn.addEventListener('click', ()=>{
+                    const id = Number(btn.getAttribute('data-edit'));
+                    const u = users.find(x=>x.id===id);
+                    if (!u) return;
+                    openEditUser(u);
+                });
+            });
+        }
+    }catch(e){ console.warn(e); }
+}
+
+function openEditUser(u){
+    editUserId.value = u.id;
+    editUserFullname.value = u.full_name || '';
+    editUserPhone.value = u.phone_number || '';
+    editUserStatus.textContent = '';
+    editModal.style.display = 'flex'; // center via align/justify
+}
+editClose.addEventListener('click', ()=>{ editModal.style.display='none'; });
+
+editUserSave.addEventListener('click', async ()=>{
+    editUserStatus.textContent = '';
+    const userId = Number(editUserId.value);
+    const fullName = editUserFullname.value.trim();
+    const phoneNumber = editUserPhone.value.trim();
+    try{
+        // Защищённый эндпоинт обновления данных пользователя
+        const res = await fetch(`${API_BASE}/tickets/update-user-info`, {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            credentials:'include',
+            body: JSON.stringify({ userId, fullName, phoneNumber })
+        });
+        const data = (res.headers.get('content-type')||'').includes('application/json') ? await res.json() : { message: await res.text() };
+        if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
+        editUserStatus.textContent = 'Сохранено';
+        await loadUsers();
+        setTimeout(()=>{ editModal.style.display = 'none'; }, 500);
+    }catch(e){
+        editUserStatus.textContent = e.message || 'Ошибка сохранения';
+    }
+});
+
+/* REPORTS */
+const startDateInput = document.getElementById('start_date');
+const endDateInput = document.getElementById('end_date');
+const btnMakeReport = document.getElementById('btn-make-report');
+const btnPrint = document.getElementById('btn-print');
+const reportSummary = document.getElementById('report-summary');
+const reportTableBody = document.querySelector('#report-table tbody');
+const reportMessage = document.getElementById('report-message');
+
+btnMakeReport.addEventListener('click', async ()=>{
+    reportMessage.textContent = '';
+    reportSummary.innerHTML = '<div class="muted">Загрузка...</div>';
+    reportTableBody.innerHTML = '';
+
+    const s = startDateInput.value;
+    const e = endDateInput.value;
+    if (!s || !e){ reportSummary.innerHTML = '<div class="muted">Укажите обе даты.</div>'; return; }
+
+    try{
+        const url = new URL(`${API_BASE}/admin/report`);
+        url.searchParams.set('startDate', s);
+        url.searchParams.set('endDate', e);
+        const res = await fetch(url.toString(), { credentials:'include' });
+        const rows = res.ok ? await res.json() : [];
+
+        const total = rows.length;
+        const succ = rows.filter(r=>r.status==='Successful').length;
+        const rej = rows.filter(r=>r.status==='Rejected').length;
+        const ip = rows.filter(r=>r.status==='In Progress').length;
+
+        reportSummary.innerHTML = `
+            <div class="chips">
+                <span class="chip">Период: ${s} — ${e}</span>
+                <span class="chip">Всего: ${total}</span>
+                <span class="chip">Успешно: ${succ}</span>
+                <span class="chip">Отклонено: ${rej}</span>
+                <span class="chip">В работе: ${ip}</span>
+            </div>
+        `;
+        btnPrint.disabled = total===0;
+
+        reportTableBody.innerHTML = '';
+        for(const r of rows){
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${r.id}</td>
+                <td>${escapeHtml(r.subject || '')}</td>
+                <td><span class="status s-${(r.status||'').replaceAll(' ','\\ ')}">${r.status||''}</span></td>
+                <td>${escapeHtml(r.user_username || '')}</td>
+                <td class="col-moderator">${escapeHtml(r.moderator_username || '')}</td>
+                <td class="muted">${formatDate(r.created_at)}</td>
+                <td class="muted col-closed">${r.closed_at ? formatDate(r.closed_at) : '-'}</td>
+            `;
+            reportTableBody.appendChild(tr);
+        }
+    }catch(e){
+        reportSummary.innerHTML = '<div class="muted">Ошибка формирования отчёта</div>';
+        reportMessage.textContent = e.message || 'Ошибка подключения к серверу';
+        btnPrint.disabled = true;
+    }
+});
+btnPrint.addEventListener('click', ()=> window.print());
+
+/* Init */
+reloadTickets();
+loadUsers();
+</script>
+</body>
+</html>
