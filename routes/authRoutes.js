@@ -5,7 +5,6 @@ const router = express.Router();
 const { pool } = require('../db');
 const { hashPassword, comparePassword } = require('../utils/auth');
 
-// --- Middleware для проверки авторизации и ролей ---
 /**
  * Проверяет, авторизован ли пользователь.
  */
@@ -38,9 +37,8 @@ function isAdmin(req, res, next) {
         res.status(403).json({ message: 'Доступ запрещен. Требуется роль администратора.' });
     }
 }
+
 // ---------------------------------------------------
-
-
 // POST /api/auth/register-admin
 router.post('/register-admin', async (req, res) => {
     const { username, password } = req.body;
@@ -68,7 +66,6 @@ router.post('/register-admin', async (req, res) => {
     }
 });
 
-
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
@@ -78,15 +75,25 @@ router.post('/login', async (req, res) => {
     }
 
     try {
-        // Выбираем все нужные поля
-        const [users] = await pool.query('SELECT id, password_hash, role, full_name, phone_number FROM users WHERE username = ?', [username]);
+        const [users] = await pool.query(
+            'SELECT id, password_hash, role, full_name, phone_number FROM users WHERE username = ?',
+            [username]
+        );
 
         if (users.length === 0) {
             return res.status(401).json({ message: 'Неверное имя пользователя или пароль.' });
         }
 
         const user = users[0];
-        const isMatch = await comparePassword(password, user.password_hash);
+        const hash = user.password_hash || '';
+
+        let isMatch = false;
+        try {
+            isMatch = hash ? await comparePassword(password, hash) : false;
+        } catch (cmpErr) {
+            console.error('Ошибка сравнения пароля (bcrypt):', cmpErr);
+            isMatch = false;
+        }
 
         if (!isMatch) {
             return res.status(401).json({ message: 'Неверное имя пользователя или пароль.' });
@@ -97,7 +104,7 @@ router.post('/login', async (req, res) => {
         req.session.userRole = user.role;
         req.session.username = username;
 
-        // Отправляем успешный ответ (включая данные профиля)
+        // Успешный ответ
         res.json({ 
             message: 'Успешный вход.', 
             role: user.role, 
@@ -113,7 +120,6 @@ router.post('/login', async (req, res) => {
     }
 });
 
-
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
     req.session.destroy(err => {
@@ -125,15 +131,13 @@ router.post('/logout', (req, res) => {
     });
 });
 
-
-// GET /api/auth/status (Исправлен для получения полных данных)
+// GET /api/auth/status (возвращает полные данные)
 router.get('/status', async (req, res) => {
     if (!req.session.userId) {
         return res.json({ isLoggedIn: false });
     }
 
     try {
-        // Запрашиваем актуальные данные из БД при проверке статуса
         const [users] = await pool.query(
             'SELECT username, role, full_name, phone_number FROM users WHERE id = ?', 
             [req.session.userId]
@@ -150,7 +154,6 @@ router.get('/status', async (req, res) => {
                 phone_number: user.phone_number
             });
         } else {
-            // Пользователь не найден в БД, сбрасываем сессию
             req.session.destroy();
             res.json({ isLoggedIn: false });
         }
@@ -159,7 +162,6 @@ router.get('/status', async (req, res) => {
         res.status(500).json({ isLoggedIn: false, message: 'Ошибка сервера.' });
     }
 });
-
 
 // GET /api/auth/admin-exists
 router.get('/admin-exists', async (req, res) => {
@@ -174,39 +176,33 @@ router.get('/admin-exists', async (req, res) => {
     }
 });
 
-
 // POST /api/auth/save-subscription
 router.post('/save-subscription', isAuthenticated, async (req, res) => {
     const { subscription } = req.body;
     const userId = req.session.userId;
 
     if (!subscription) {
-        return res.status(400).json({ message: 'Требуется объект подписки.' });
+        return res.status(400).json({ message: 'Отсутствует подписка.' });
     }
 
     try {
-        await pool.query(
-            'UPDATE users SET push_subscription = ? WHERE id = ?',
-            [JSON.stringify(subscription), userId]
-        );
-        res.json({ message: 'Подписка успешно сохранена.' });
+        await pool.query('UPDATE users SET push_subscription = ? WHERE id = ?', [JSON.stringify(subscription), userId]);
+        res.json({ message: 'Подписка сохранена.' });
     } catch (error) {
         console.error('Ошибка сохранения подписки:', error);
         res.status(500).json({ message: 'Ошибка сервера при сохранении подписки.' });
     }
 });
 
-
-// POST /api/user/update-profile
-// Обновление ФИО и телефона пользователем (напрямую, без модератора)
-router.post('/user/update-profile', isAuthenticated, async (req, res) => {
+// Обновление профиля (если есть в вашем UI)
+router.post('/update-profile', isAuthenticated, async (req, res) => {
     const { fullName, phoneNumber } = req.body;
     const userId = req.session.userId;
 
     try {
         await pool.query(
             'UPDATE users SET full_name = ?, phone_number = ? WHERE id = ?',
-            [fullName || null, phoneNumber || null, userId] // null, если пустая строка
+            [fullName || null, phoneNumber || null, userId]
         );
         
         res.json({ message: 'Данные успешно обновлены.' });
@@ -215,7 +211,6 @@ router.post('/user/update-profile', isAuthenticated, async (req, res) => {
         res.status(500).json({ message: 'Ошибка сервера при обновлении данных.' });
     }
 });
-
 
 module.exports = {
     router,

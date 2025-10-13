@@ -81,21 +81,40 @@ async function sendPushNotification(userId, payload) {
 const API_PORT = process.env.PORT || 3000;
 const clientPort = process.env.CLIENT_PORT || 8080;
 
-const allowedOrigins = [
+// Базовый список локальных origin
+const defaultAllowedOrigins = [
     `http://localhost:${API_PORT}`, 
     `http://localhost:${clientPort}`, 
     'http://127.0.0.1:5500', 
     'http://localhost:5500'
-]; 
+];
+
+// Разрешаем добавлять свои origin через .env (через запятую)
+const envAllowed = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+// Регулярки для типичных локальных подсетей (разрешаем весь локальный сегмент)
+const localNetRegexes = [
+  /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:\d+$/,
+  /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/,
+  /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}:\d+$/
+];
+
+const allowedOrigins = [...defaultAllowedOrigins, ...envAllowed];
 
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            console.warn(`CORS Reject: Origin ${origin} not allowed.`);
-            callback(new Error(`Not allowed by CORS: ${origin}`));
-        }
+        // Разрешаем запросы без заголовка Origin (например, curl/сервер-сервер)
+        if (!origin) return callback(null, true);
+
+        // Белый список + локальные подсети
+        const allow = allowedOrigins.includes(origin) || localNetRegexes.some(rx => rx.test(origin));
+        if (allow) return callback(null, true);
+
+        console.warn(`CORS Reject: Origin ${origin} not allowed.`);
+        callback(new Error(`Not allowed by CORS: ${origin}`));
     },
     credentials: true 
 }));
@@ -125,7 +144,7 @@ app.use(sessionMiddleware);
 // Обслуживание статических файлов из папки 'public'
 app.use(express.static('public'));
 
-// !!! НОВОЕ: Обслуживание загруженных файлов из папки 'uploads'
+// Обслуживание загруженных файлов из папки 'uploads'
 app.use('/uploads', express.static('uploads')); 
 
 // Подключение роутов аутентификации
@@ -141,9 +160,13 @@ app.use('/api/tickets', ticketRouter);
 // -----------------------------------------------------
 // 4. Настройка Socket.IO
 // -----------------------------------------------------
+// Для Socket.IO можно указать массив строк и RegExp — разрешим локальные подсети
 const io = new Server(server, {
     cors: {
-        origin: allowedOrigins,
+        origin: [
+            ...allowedOrigins,
+            ...localNetRegexes
+        ],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -161,6 +184,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Сервер Express/Socket.IO запущен на порту ${PORT}`);
     console.log(`Базовый адрес: http://localhost:${PORT}`);
 });
+
 
 // -----------------------------------------------------
 // 6. Обработка Соединений Socket.IO 
@@ -248,7 +272,6 @@ io.on('connection', (socket) => {
     });
     
     // --- 2. Обработка Нового Сообщения (Socket.IO) ---
-    // Socket.IO используется только для мгновенных текстовых сообщений
     socket.on('sendMessage', async ({ ticketId, messageText }) => {
         const roomName = `ticket-${ticketId}`;
         
@@ -257,10 +280,8 @@ io.on('connection', (socket) => {
         const senderUsername = socket.request.session.username;
         const senderRole = role;
 
-        // Сохраняем сообщение и проверяем/обновляем статус. attachmentUrl здесь всегда null
         const { isStatusUpdated, newStatus, recipientId } = await saveMessageToDB(ticketId, userId, senderRole, messageText, null);
         
-        // Данные для отправки всем участникам комнаты
         const newMessage = {
             senderId: userId,
             senderUsername: senderUsername,
@@ -272,7 +293,6 @@ io.on('connection', (socket) => {
         
         io.to(roomName).emit('receiveMessage', newMessage);
         
-        // Отправка PUSH
         if (recipientId) {
             const isModerator = senderRole === 'moderator' || senderRole === 'admin';
             const bodyText = isModerator 
@@ -321,4 +341,14 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`Клиент отключен. Socket ID: ${socket.id}`);
     });
+});
+
+
+// -----------------------------------------------------
+// 7. Универсальный JSON-обработчик ошибок
+// -----------------------------------------------------
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ message: 'Внутренняя ошибка сервера' });
 });

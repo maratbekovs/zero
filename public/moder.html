@@ -107,7 +107,7 @@
         .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; }
         .card{ background:#fff; border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
         .card .card-header{ padding:16px 16px 0 16px; }
-        .card .card-body{ padding:20px; } /* increased inner padding */
+        .card .card-body{ padding:20px; }
 
         .table-wrap{ overflow:auto; border-radius:12px; }
         table{ width:100%; border-collapse:collapse; }
@@ -171,7 +171,6 @@
         .mchat-sub{ font-size:12px; color:var(--muted); }
         .mchat-close{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 10px; cursor:pointer; }
 
-        /* NEW: mobile status bar (for changing status inside mobile chat) */
         .mstatus-bar{
             display:flex; gap:8px; align-items:center;
             padding:10px 12px; border-bottom:1px solid var(--border); background:#fff;
@@ -197,7 +196,6 @@
         .mpreview.show{ display:flex; }
         .mpreview img, .mpreview video{ max-height:90px; border-radius:6px; }
 
-        /* Reusable modal (edit user) */
         .modal-overlay{
             display:none; position:fixed; inset:0; z-index:1004; background:rgba(0,0,0,.45);
             align-items:center; justify-content:center; padding:20px;
@@ -216,51 +214,39 @@
         .modal-body .stack{ display:flex; flex-direction:column; gap:14px; }
         .modal-footer{ padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
 
-        /* Tablets */
         @media (max-width: 1100px){
             .grid{ grid-template-columns:1fr; }
             .chat{ height:auto; }
         }
-
-        /* Phones (<= 768px) */
         @media (max-width: 768px){
-            .mobile-header{ display:flex; } /* show header only on phones */
-            .sidebar{ display:none !important; } /* remove sidebar on mobiles */
-            .main{ padding:72px 16px 96px; } /* header + bottom tabs space */
+            .mobile-header{ display:flex; }
+            .sidebar{ display:none !important; }
+            .main{ padding:72px 16px 96px; }
             .mobile-tab-bar{ display:flex; }
             .toolbar{ flex-direction:column; align-items:stretch; gap:10px; }
             thead th{ position:static; }
-            /* IMPORTANT: hide desktop chat panel on phones entirely */
             #chat-panel{ display:none !important; }
         }
-
-        /* Small phones (<= 480px) */
         @media (max-width: 480px){
             .main{ padding:72px 12px 98px; }
             .btn{ padding:9px 12px; font-size:13px; }
             .input, select, .date{ padding:10px 12px; font-size:13px; }
             th,td{ padding:10px; font-size:13px; }
-
-            /* Hide less-critical columns for tight width */
             #tickets-table th.col-user, #tickets-table td.col-user,
             #tickets-table th.col-created, #tickets-table td.col-created { display:none; }
-
             #users-table th.col-phone, #users-table td.col-phone,
             #users-table th.col-created-users, #users-table td.col-created-users { display:none; }
-
             #report-table th.col-moderator, #report-table td.col-moderator,
             #report-table th.col-closed, #report-table td.col-closed { display:none; }
         }
     </style>
 </head>
 <body>
-    <!-- Fixed mobile header (phones only by CSS) -->
     <div class="mobile-header">
         <h1 class="title">ZERO 🛡️ Help Desk — Модератор</h1>
     </div>
 
     <div class="layout">
-        <!-- Desktop sidebar (hidden on mobile by CSS) -->
         <aside class="sidebar">
             <div class="brand"><h1>ZERO 🛡️ Help Desk</h1></div>
             <nav class="nav">
@@ -324,7 +310,7 @@
                         </div>
                     </div>
 
-                    <!-- Desktop chat panel (auto-hidden on phones via CSS) -->
+                    <!-- Desktop chat panel -->
                     <div class="card chat" id="chat-panel">
                         <div class="chat-head">
                             <div>
@@ -428,7 +414,7 @@
                                         <div class="muted" id="create-user-msg"></div>
                                     </div>
                                 </div>
-                                <div class="muted">Примечание: создание пользователя может быть ограничено правами. В случае ошибки проверьте роль и доступы.</div>
+                                <div class="muted">Примечание: создание пользователя может быть ограничено правами.</div>
                             </div>
                         </div>
                     </div>
@@ -502,627 +488,9 @@
         <a href="#" class="tab-item" data-section="profile"><i>👤</i><span>Профиль</span></a>
     </div>
 
-    <!-- Mobile chat modal (opens on phones like in user app) -->
-    <div class="mchat-modal" id="mchat-modal" aria-hidden="true">
-        <div class="mchat-wrap">
-            <div class="mchat-head">
-                <button class="mchat-close" id="mchat-close">← Назад</button>
-                <div style="flex:1; min-width:0;">
-                    <div class="mchat-title">Чат #<span id="mchat-ticket-id">—</span></div>
-                    <div class="mchat-sub">Тема: <span id="mchat-ticket-subject">—</span></div>
-                </div>
-                <span class="mchat-sub">Статус: <strong id="mchat-status">—</strong></span>
-            </div>
-
-            <!-- NEW: status controls inside mobile chat -->
-            <div class="mstatus-bar">
-                <select id="mstatus-select" class="input" style="flex:1;">
-                    <option value="In Progress">В работе</option>
-                    <option value="On Hold">На согласовании</option>
-                    <option value="Successful">Успешно</option>
-                    <option value="Rejected">Отклонено</option>
-                </select>
-                <button class="btn success small" id="mupdate-status-button">Обновить</button>
-            </div>
-            <div class="mstatus-info" id="mtime-spent-display" style="display:none;"></div>
-
-            <div id="mchat-closed-banner" class="banner" style="display:none;">
-                Чат завершён. Новые сообщения отправлять нельзя.
-            </div>
-
-            <div class="mchat-box" id="mchat-box"></div>
-
-            <div class="mchat-actions" id="mchat-actions">
-                <input class="input" id="mchat-input" placeholder="Ваш ответ...">
-                <input type="file" id="mchat-attachment" accept="image/*,video/*" style="display:none;">
-                <button class="btn ghost small" id="mbtn-pick">📎</button>
-                <button class="btn ghost small" id="mbtn-photo">📷</button>
-                <button class="btn ghost small" id="mbtn-video">🎥</button>
-                <button class="btn small" id="mchat-send">Отпр.</button>
-            </div>
-            <div class="mpreview" id="mpreview">
-                <div id="mpreview-thumb"></div>
-                <button class="btn ghost small" id="mbtn-clear-preview">Убрать</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit user modal (admin only) -->
-    <div class="modal-overlay" id="edit-user-modal" aria-hidden="true">
-        <div class="modal-panel">
-            <div class="modal-head">
-                <div class="modal-title">Редактирование пользователя</div>
-                <button class="modal-close" id="edit-user-close">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="stack">
-                    <input class="input" id="edit-user-id" placeholder="ID" disabled>
-                    <input class="input" id="edit-user-fullname" placeholder="ФИО">
-                    <input class="input" id="edit-user-phone" placeholder="Телефон">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" id="edit-user-save">Сохранить</button>
-                <div class="muted" id="edit-user-status"></div>
-            </div>
-        </div>
-    </div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-const API_BASE = 'http://localhost:3000/api';
-const socket = io('http://localhost:3000', { withCredentials:true });
-
-/* Auth and navigation */
-const meUsernameEl = document.getElementById('me-username');
-const meRoleEl = document.getElementById('me-role');
-const profileUsername = document.getElementById('profile-username');
-const profileRole = document.getElementById('profile-role');
-
-let me = { userId:null, username:null, role:null };
-
-async function ensureModerator() {
-    try{
-        const res = await fetch(`${API_BASE}/auth/status`, { credentials:'include' });
-        if (!res.ok) throw new Error('auth');
-        const data = await res.json();
-        if (!data.isLoggedIn || !['moderator','admin'].includes(data.role)) throw new Error('role');
-        me = { userId:data.userId, username:data.username, role:data.role };
-        meUsernameEl.textContent = data.username;
-        meRoleEl.textContent = `роль: ${data.role}`;
-        profileUsername.textContent = data.username;
-        profileRole.textContent = data.role;
-    }catch(e){
-        location.href = '/';
-    }
-}
-ensureModerator();
-
-/* Section switching + fixed mobile tabs */
-function activateSection(sec){
-    document.querySelectorAll('.nav a').forEach(x=>x.classList.toggle('active', x.dataset.section===sec));
-    document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active', s.id === `sec-${sec}`));
-    document.querySelectorAll('.mobile-tab-bar .tab-item').forEach(t=>t.classList.toggle('active', t.dataset.section===sec));
-    if (sec==='tickets') reloadTickets();
-    if (sec==='users') loadUsers();
-}
-document.querySelectorAll('.nav a').forEach(a=>{
-    a.addEventListener('click', e=>{ e.preventDefault(); activateSection(a.dataset.section); });
-});
-document.querySelectorAll('.mobile-tab-bar .tab-item').forEach(t=>{
-    t.addEventListener('click', e=>{ e.preventDefault(); activateSection(t.dataset.section); });
-});
-
-document.getElementById('btn-logout').onclick = doLogout;
-document.getElementById('logout-2').onclick = doLogout;
-async function doLogout(){ try{ await fetch(`${API_BASE}/auth/logout`, { method:'POST', credentials:'include' }); } finally{ location.href = '/'; } }
-
-/* Tickets list */
-const ticketsTableBody = document.querySelector('#tickets-table tbody');
-const searchInput = document.getElementById('search');
-const filterStatus = document.getElementById('filter-status');
-const btnReload = document.getElementById('btn-reload');
-
-let allTickets = [];
-btnReload.addEventListener('click', reloadTickets);
-searchInput.addEventListener('input', renderTickets);
-filterStatus.addEventListener('change', renderTickets);
-
-async function reloadTickets(){
-    try{
-        const res = await fetch(`${API_BASE}/tickets/all`, { credentials:'include' });
-        allTickets = res.ok ? await res.json() : [];
-        renderTickets();
-    }catch(e){ console.warn(e); }
-}
-
-function renderTickets(){
-    const q = (searchInput.value || '').toLowerCase().trim();
-    const fs = filterStatus.value;
-    const filtered = allTickets.filter(t=>{
-        const matchesQ = !q || `${t.subject} ${t.user_username} ${t.user_full_name}`.toLowerCase().includes(q);
-        const matchesS = !fs || t.status === fs;
-        return matchesQ && matchesS;
-    });
-
-    // Stats
-    document.getElementById('stat-total').textContent = filtered.length;
-    document.getElementById('stat-new').textContent = filtered.filter(t=>t.status==='New').length;
-    document.getElementById('stat-ip').textContent = filtered.filter(t=>t.status==='In Progress').length;
-
-    ticketsTableBody.innerHTML = '';
-    for(const t of filtered){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${t.id}</td>
-            <td class="col-user">
-                <div><strong>${escapeHtml(t.user_username || '')}</strong></div>
-                <div class="muted">${escapeHtml(t.user_full_name || '')}</div>
-                <div class="muted">${escapeHtml(t.user_phone || '')}</div>
-            </td>
-            <td>${escapeHtml(t.subject || '')}</td>
-            <td><span class="status s-${(t.status || '').replaceAll(' ','\\ ')}">${t.status || ''}</span></td>
-            <td class="muted col-created">${formatDate(t.created_at)}</td>
-            <td>
-                <div class="row">
-                    <button class="btn small" data-open data-id="${t.id}">Открыть чат</button>
-                </div>
-            </td>
-        `;
-        ticketsTableBody.appendChild(tr);
-    }
-
-    ticketsTableBody.querySelectorAll('[data-open]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-            const id = Number(btn.dataset.id);
-            const t = allTickets.find(x=>x.id===id);
-            if (t) openChat(t);
-        });
-    });
-}
-
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function formatDate(d){ try{ return new Date(d).toLocaleString(); }catch{ return d || ''; } }
-function isMobile(){ return window.matchMedia('(max-width: 768px)').matches; }
-
-/* Chat (desktop + mobile modal) */
-let activeTicket = null;
-
-const d = {
-  box: document.getElementById('chat-box'),
-  ticketId: document.getElementById('chat-ticket-id'),
-  subject: document.getElementById('chat-ticket-subject'),
-  userId: document.getElementById('chat-user-id'),
-  status: document.getElementById('current-status'),
-  statusSelect: document.getElementById('status-select'),
-  updateStatusBtn: document.getElementById('update-status-button'),
-  timeSpent: document.getElementById('time-spent-display'),
-  closedBanner: document.getElementById('chat-closed-banner'),
-  actions: document.getElementById('chat-actions'),
-  input: document.getElementById('chat-input'),
-  file: document.getElementById('chat-attachment'),
-  btnPick: document.getElementById('btn-pick'),
-  btnPhoto: document.getElementById('btn-photo'),
-  btnVideo: document.getElementById('btn-video'),
-  btnSend: document.getElementById('chat-send-button'),
-  preview: document.getElementById('preview'),
-  previewThumb: document.getElementById('preview-thumb'),
-  btnClearPreview: document.getElementById('btn-clear-preview')
-};
-
-const m = {
-  modal: document.getElementById('mchat-modal'),
-  close: document.getElementById('mchat-close'),
-  box: document.getElementById('mchat-box'),
-  ticketId: document.getElementById('mchat-ticket-id'),
-  subject: document.getElementById('mchat-ticket-subject'),
-  status: document.getElementById('mchat-status'),
-  statusSelect: document.getElementById('mstatus-select'),
-  updateStatusBtn: document.getElementById('mupdate-status-button'),
-  timeSpent: document.getElementById('mtime-spent-display'),
-  closedBanner: document.getElementById('mchat-closed-banner'),
-  actions: document.getElementById('mchat-actions'),
-  input: document.getElementById('mchat-input'),
-  file: document.getElementById('mchat-attachment'),
-  btnPick: document.getElementById('mbtn-pick'),
-  btnPhoto: document.getElementById('mbtn-photo'),
-  btnVideo: document.getElementById('mbtn-video'),
-  btnSend: document.getElementById('mchat-send'),
-  preview: document.getElementById('mpreview'),
-  previewThumb: document.getElementById('mpreview-thumb'),
-  btnClearPreview: document.getElementById('mbtn-clear-preview')
-};
-
-function openChat(ticket){
-    activeTicket = ticket;
-    if (isMobile()){
-        openMobileChat(ticket);
-    } else {
-        openDesktopChat(ticket);
-    }
-}
-
-function openDesktopChat(t){
-    d.ticketId.textContent = t.id;
-    d.subject.textContent = t.subject || '';
-    d.userId.textContent = t.user_id || '-';
-    d.status.textContent = t.status || '—';
-
-    const isClosed = ['Successful','Rejected'].includes(t.status);
-    d.closedBanner.style.display = isClosed ? '' : 'none';
-    d.actions.style.display = isClosed ? 'none' : 'flex';
-
-    socket.emit('joinTicket', t.id);
-    loadMessagesTo(t.id, d.box, false);
-}
-
-function openMobileChat(t){
-    m.ticketId.textContent = t.id;
-    m.subject.textContent = t.subject || '';
-    m.status.textContent = t.status || '—';
-
-    // set mobile status selector to current
-    const allowed = ['In Progress','On Hold','Successful','Rejected'];
-    m.statusSelect.value = allowed.includes(t.status) ? t.status : 'In Progress';
-
-    const isClosed = ['Successful','Rejected'].includes(t.status);
-    m.closedBanner.style.display = isClosed ? '' : 'none';
-    m.actions.style.display = isClosed ? 'none' : 'flex';
-
-    m.timeSpent.style.display = 'none';
-    m.timeSpent.textContent = '';
-
-    m.modal.style.display = 'block';
-    socket.emit('joinTicket', t.id);
-    loadMessagesTo(t.id, m.box, true);
-}
-
-m.close.addEventListener('click', ()=>{ closeMobileChat(); });
-function closeMobileChat(){
-    m.modal.style.display = 'none';
-    m.box.innerHTML = '';
-    m.input.value = '';
-    m.file.value = '';
-    m.previewThumb.innerHTML = '';
-    m.preview.classList.remove('show');
-}
-
-/* Load and render messages */
-async function loadMessagesTo(ticketId, container, isMobileChat){
-    container.innerHTML = '';
-    try{
-        const res = await fetch(`${API_BASE}/tickets/${ticketId}/messages`, { credentials:'include' });
-        const list = res.ok ? await res.json() : [];
-        for(const msg of list){
-            appendMessageTo(msg, container, isMobileChat);
-        }
-        container.scrollTop = container.scrollHeight;
-    }catch(e){ console.warn(e); }
-}
-
-function appendMessageTo(mg, container, isMobileChat){
-    const isMe = mg.senderRole === 'moderator' || mg.senderRole === 'admin';
-    const el = document.createElement('div');
-    el.className = `${isMobileChat ? 'mmsg':'msg'} ${isMe ? 'me':'other'}`;
-
-    let attach = '';
-    if (mg.attachmentUrl){
-        const url = mg.attachmentUrl;
-        const img = /\.(png|jpe?g|gif|webp)$/i.test(url);
-        const vid = /\.(mp4|webm|ogg|mov)$/i.test(url);
-        if (img) attach = `<div class="attach"><img src="${url}" alt="attach"></div>`;
-        else if (vid) attach = `<div class="attach"><video src="${url}" controls></video></div>`;
-        else attach = `<div class="attach"><a href="${url}" target="_blank">📎 Вложение</a></div>`;
-    }
-
-    el.innerHTML = `
-        ${mg.messageText ? `<div>${escapeHtml(mg.messageText)}</div>`:''}
-        ${attach}
-        <div class="meta">${escapeHtml(mg.senderUsername || mg.senderRole || '')} • ${formatDate(mg.createdAt)}</div>
-    `;
-    container.appendChild(el);
-}
-
-/* Status update (desktop) */
-d.updateStatusBtn.addEventListener('click', async ()=>{
-    if (!activeTicket) return;
-    const newStatus = d.statusSelect.value;
-    await updateStatusCommon(newStatus, false);
-});
-
-/* NEW: Status update (mobile) */
-m.updateStatusBtn.addEventListener('click', async ()=>{
-    if (!activeTicket) return;
-    const newStatus = m.statusSelect.value;
-    await updateStatusCommon(newStatus, true);
-});
-
-async function updateStatusCommon(newStatus, isMobileUI){
-    try{
-        const res = await fetch(`${API_BASE}/tickets/update-status`, {
-            method:'POST',
-            headers:{ 'Content-Type':'application/json' },
-            credentials:'include',
-            body: JSON.stringify({ ticketId: activeTicket.id, newStatus })
-        });
-        const data = res.ok ? await res.json() : { message: await res.text() };
-        if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
-
-        // apply UI updates
-        if (isMobileUI){
-            m.status.textContent = data.newStatus || newStatus;
-            if (data.timeSpent){
-                m.timeSpent.style.display = '';
-                m.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
-            }
-            const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
-            m.closedBanner.style.display = closed ? '' : 'none';
-            m.actions.style.display = closed ? 'none' : 'flex';
-        }else{
-            d.status.textContent = data.newStatus || newStatus;
-            if (data.timeSpent){
-                d.timeSpent.style.display = '';
-                d.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
-            }
-            const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
-            d.closedBanner.style.display = closed ? '' : 'none';
-            d.actions.style.display = closed ? 'none' : 'flex';
-        }
-
-        // refresh list + activeTicket
-        await reloadTickets();
-        const found = allTickets.find(x=>x.id===activeTicket.id);
-        if (found) activeTicket = found;
-    }catch(e){
-        alert(e.message || 'Ошибка обновления статуса');
-    }
-}
-
-/* Desktop send */
-d.btnPick.onclick = ()=>{ if (d.actions.style.display==='none') return; d.file.accept='image/*,video/*'; d.file.removeAttribute('capture'); d.file.click(); };
-d.btnPhoto.onclick = ()=>{ if (d.actions.style.display==='none') return; d.file.accept='image/*'; d.file.setAttribute('capture','environment'); d.file.click(); };
-d.btnVideo.onclick = ()=>{ if (d.actions.style.display==='none') return; d.file.accept='video/*'; d.file.setAttribute('capture','environment'); d.file.click(); };
-d.btnClearPreview.onclick = ()=>{ d.file.value=''; d.previewThumb.innerHTML=''; d.preview.classList.remove('show'); };
-d.file.addEventListener('change', ()=> handlePreview(d.file, d.preview, d.previewThumb));
-d.btnSend.addEventListener('click', ()=> sendMessage(false));
-d.input.addEventListener('keydown', (e)=>{ if (d.actions.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(false); }});
-
-/* Mobile send */
-m.btnPick.onclick = ()=>{ if (m.actions.style.display==='none') return; m.file.accept='image/*,video/*'; m.file.removeAttribute('capture'); m.file.click(); };
-m.btnPhoto.onclick = ()=>{ if (m.actions.style.display==='none') return; m.file.accept='image/*'; m.file.setAttribute('capture','environment'); m.file.click(); };
-m.btnVideo.onclick = ()=>{ if (m.actions.style.display==='none') return; m.file.accept='video/*'; m.file.setAttribute('capture','environment'); m.file.click(); };
-
-m.btnClearPreview.onclick = ()=>{ m.file.value=''; m.previewThumb.innerHTML=''; m.preview.classList.remove('show'); };
-m.file.addEventListener('change', ()=> handlePreview(m.file, m.preview, m.previewThumb));
-m.btnSend.addEventListener('click', ()=> sendMessage(true));
-m.input.addEventListener('keydown', (e)=>{ if (m.actions.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(true); }});
-
-/* Preview helper */
-function handlePreview(fileInput, wrap, thumb){
-    const f = fileInput.files?.[0];
-    thumb.innerHTML = '';
-    if (!f){ wrap.classList.remove('show'); return; }
-    const isImg = (f.type||'').startsWith('image/');
-    const isVid = (f.type||'').startsWith('video/');
-    if (isImg){
-        const img = new Image(); img.src = URL.createObjectURL(f); img.onload = ()=> URL.revokeObjectURL(img.src);
-        img.style.maxHeight = '100px'; img.style.borderRadius='6px'; thumb.appendChild(img);
-    }else if (isVid){
-        const v = document.createElement('video'); v.src = URL.createObjectURL(f); v.controls = true; v.style.maxHeight='100px'; v.style.borderRadius='6px';
-        v.onloadeddata = ()=> URL.revokeObjectURL(v.src); thumb.appendChild(v);
-    }else{
-        thumb.textContent = f.name;
-    }
-    wrap.classList.add('show');
-    fileInput.accept='image/*,video/*'; fileInput.setAttribute('capture','environment');
-}
-
-/* Send message (both UIs) */
-async function sendMessage(isMobileUI){
-    if (!activeTicket) return;
-    const ui = isMobileUI ? m : d;
-    if (ui.actions.style.display==='none') return;
-
-    const text = ui.input.value.trim();
-    const file = ui.file.files?.[0] || null;
-    if (!text && !file) return;
-
-    try{
-        let res;
-        if (file){
-            const fd = new FormData();
-            fd.set('ticketId', String(activeTicket.id));
-            if (text) fd.set('messageText', text);
-            fd.set('attachment', file);
-            res = await fetch(`${API_BASE}/tickets/messages/send`, { method:'POST', body: fd, credentials:'include' });
-        }else{
-            res = await fetch(`${API_BASE}/tickets/messages/send`, {
-                method:'POST',
-                headers:{ 'Content-Type':'application/json' },
-                credentials:'include',
-                body: JSON.stringify({ ticketId: activeTicket.id, messageText: text })
-            });
-        }
-        const data = res.ok ? await res.json() : { message: await res.text() };
-        if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
-
-        ui.input.value = '';
-        ui.file.value = '';
-        ui.previewThumb.innerHTML = '';
-        ui.preview.classList.remove('show');
-
-        if (isMobileUI) {
-            await loadMessagesTo(activeTicket.id, m.box, true);
-            m.box.scrollTop = m.box.scrollHeight;
-        } else {
-            await loadMessagesTo(activeTicket.id, d.box, false);
-            d.box.scrollTop = d.box.scrollHeight;
-        }
-    }catch(e){ alert(e.message || 'Ошибка отправки сообщения'); }
-}
-
-/* Socket updates */
-socket.on('messageCreated', (payload)=>{
-    if (!activeTicket || payload?.ticketId !== activeTicket.id || !payload.message) return;
-    if (m.modal.style.display === 'block'){
-        appendMessageTo(payload.message, m.box, true);
-        m.box.scrollTop = m.box.scrollHeight;
-    } else {
-        appendMessageTo(payload.message, d.box, false);
-        d.box.scrollTop = d.box.scrollHeight;
-    }
-});
-
-/* USERS */
-const usersTableBody = document.querySelector('#users-table tbody');
-const btnReloadUsers = document.getElementById('btn-reload-users');
-const btnCreateUser = document.getElementById('btn-create-user');
-const createUserMsg = document.getElementById('create-user-msg');
-
-// Admin edit modal
-const editModal = document.getElementById('edit-user-modal');
-const editClose = document.getElementById('edit-user-close');
-const editUserId = document.getElementById('edit-user-id');
-const editUserFullname = document.getElementById('edit-user-fullname');
-const editUserPhone = document.getElementById('edit-user-phone');
-const editUserSave = document.getElementById('edit-user-save');
-const editUserStatus = document.getElementById('edit-user-status');
-
-btnReloadUsers.addEventListener('click', loadUsers);
-
-async function loadUsers(){
-    try{
-        const res = await fetch(`${API_BASE}/admin/users`, { credentials:'include' });
-        const users = res.ok ? await res.json() : [];
-        usersTableBody.innerHTML = '';
-        for(const u of users){
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${u.id}</td>
-                <td>${escapeHtml(u.username)}</td>
-                <td>${escapeHtml(u.full_name || '')}</td>
-                <td class="col-phone">${escapeHtml(u.phone_number || '')}</td>
-                <td>${escapeHtml(u.role)}</td>
-                <td class="muted col-created-users">${formatDate(u.created_at)}</td>
-                <td>
-                    ${me.role==='admin' ? `<button class="btn small secondary" data-edit="${u.id}">Изм.</button>` : '<span class="muted">—</span>'}
-                </td>
-            `;
-            usersTableBody.appendChild(tr);
-        }
-        document.getElementById('users-total').textContent = users.length;
-
-        if (me.role==='admin'){
-            usersTableBody.querySelectorAll('[data-edit]').forEach(btn=>{
-                btn.addEventListener('click', ()=>{
-                    const id = Number(btn.getAttribute('data-edit'));
-                    const u = users.find(x=>x.id===id);
-                    if (!u) return;
-                    openEditUser(u);
-                });
-            });
-        }
-    }catch(e){ console.warn(e); }
-}
-
-function openEditUser(u){
-    editUserId.value = u.id;
-    editUserFullname.value = u.full_name || '';
-    editUserPhone.value = u.phone_number || '';
-    editUserStatus.textContent = '';
-    editModal.style.display = 'flex'; // center via align/justify
-}
-editClose.addEventListener('click', ()=>{ editModal.style.display='none'; });
-
-editUserSave.addEventListener('click', async ()=>{
-    editUserStatus.textContent = '';
-    const userId = Number(editUserId.value);
-    const fullName = editUserFullname.value.trim();
-    const phoneNumber = editUserPhone.value.trim();
-    try{
-        // Защищённый эндпоинт обновления данных пользователя
-        const res = await fetch(`${API_BASE}/tickets/update-user-info`, {
-            method:'POST',
-            headers:{ 'Content-Type':'application/json' },
-            credentials:'include',
-            body: JSON.stringify({ userId, fullName, phoneNumber })
-        });
-        const data = (res.headers.get('content-type')||'').includes('application/json') ? await res.json() : { message: await res.text() };
-        if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
-        editUserStatus.textContent = 'Сохранено';
-        await loadUsers();
-        setTimeout(()=>{ editModal.style.display = 'none'; }, 500);
-    }catch(e){
-        editUserStatus.textContent = e.message || 'Ошибка сохранения';
-    }
-});
-
-/* REPORTS */
-const startDateInput = document.getElementById('start_date');
-const endDateInput = document.getElementById('end_date');
-const btnMakeReport = document.getElementById('btn-make-report');
-const btnPrint = document.getElementById('btn-print');
-const reportSummary = document.getElementById('report-summary');
-const reportTableBody = document.querySelector('#report-table tbody');
-const reportMessage = document.getElementById('report-message');
-
-btnMakeReport.addEventListener('click', async ()=>{
-    reportMessage.textContent = '';
-    reportSummary.innerHTML = '<div class="muted">Загрузка...</div>';
-    reportTableBody.innerHTML = '';
-
-    const s = startDateInput.value;
-    const e = endDateInput.value;
-    if (!s || !e){ reportSummary.innerHTML = '<div class="muted">Укажите обе даты.</div>'; return; }
-
-    try{
-        const url = new URL(`${API_BASE}/admin/report`);
-        url.searchParams.set('startDate', s);
-        url.searchParams.set('endDate', e);
-        const res = await fetch(url.toString(), { credentials:'include' });
-        const rows = res.ok ? await res.json() : [];
-
-        const total = rows.length;
-        const succ = rows.filter(r=>r.status==='Successful').length;
-        const rej = rows.filter(r=>r.status==='Rejected').length;
-        const ip = rows.filter(r=>r.status==='In Progress').length;
-
-        reportSummary.innerHTML = `
-            <div class="chips">
-                <span class="chip">Период: ${s} — ${e}</span>
-                <span class="chip">Всего: ${total}</span>
-                <span class="chip">Успешно: ${succ}</span>
-                <span class="chip">Отклонено: ${rej}</span>
-                <span class="chip">В работе: ${ip}</span>
-            </div>
-        `;
-        btnPrint.disabled = total===0;
-
-        reportTableBody.innerHTML = '';
-        for(const r of rows){
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${r.id}</td>
-                <td>${escapeHtml(r.subject || '')}</td>
-                <td><span class="status s-${(r.status||'').replaceAll(' ','\\ ')}">${r.status||''}</span></td>
-                <td>${escapeHtml(r.user_username || '')}</td>
-                <td class="col-moderator">${escapeHtml(r.moderator_username || '')}</td>
-                <td class="muted">${formatDate(r.created_at)}</td>
-                <td class="muted col-closed">${r.closed_at ? formatDate(r.closed_at) : '-'}</td>
-            `;
-            reportTableBody.appendChild(tr);
-        }
-    }catch(e){
-        reportSummary.innerHTML = '<div class="muted">Ошибка формирования отчёта</div>';
-        reportMessage.textContent = e.message || 'Ошибка подключения к серверу';
-        btnPrint.disabled = true;
-    }
-});
-btnPrint.addEventListener('click', ()=> window.print());
-
-/* Init */
-reloadTickets();
-loadUsers();
-</script>
+    <!-- Локальный клиент Socket.IO (без внешнего CDN, дружит с строгой CSP 'self') -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Внешний скрипт приложения (без inline — дружит с CSP) -->
+    <script defer src="/js/moder.js"></script>
 </body>
 </html>

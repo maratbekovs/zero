@@ -6,9 +6,7 @@ const { pool } = require('../db');
 const { hashPassword, comparePassword } = require('../utils/auth');
 const { isAdmin, isModeratorOrAdmin } = require('./authRoutes'); 
 
-
-// POST /api/admin/create-user
-// ... (Код без изменений) ...
+// POST /api/admin/create-user (только админ)
 router.post('/create-user', isAdmin, async (req, res) => {
     const { username, password, role = 'user' } = req.body; 
 
@@ -46,24 +44,33 @@ router.post('/create-user', isAdmin, async (req, res) => {
 
 
 // GET /api/admin/users
-// ... (Код без изменений) ...
-router.get('/users', isAdmin, async (req, res) => {
+// Доступ модераторам и админам. ВАЖНО: одинарные кавычки из-за ANSI_QUOTES.
+router.get('/users', isModeratorOrAdmin, async (req, res) => {
     try {
         const [users] = await pool.query(
-            'SELECT id, username, role, full_name, phone_number, created_at FROM users WHERE role != "admin" ORDER BY id DESC'
+            "SELECT id, username, role, full_name, phone_number, created_at FROM users WHERE role <> 'admin' ORDER BY id DESC"
         );
-        
         res.json(users);
-
     } catch (error) {
+        if (error && (error.code === 'ER_BAD_FIELD_ERROR' || String(error.message || '').includes('Unknown column'))) {
+            try {
+                const [usersNoCreated] = await pool.query(
+                    "SELECT id, username, role, full_name, phone_number FROM users WHERE role <> 'admin' ORDER BY id DESC"
+                );
+                const normalized = usersNoCreated.map(u => ({ ...u, created_at: null }));
+                return res.json(normalized);
+            } catch (e2) {
+                console.error('Ошибка получения списка пользователей (fallback):', e2);
+                return res.status(500).json({ message: 'Ошибка сервера при получении списка.' });
+            }
+        }
         console.error('Ошибка получения списка пользователей:', error);
         res.status(500).json({ message: 'Ошибка сервера при получении списка.' });
     }
 });
 
 
-// !!! НОВЫЙ РОУТ: GET /api/admin/report
-// Генерация отчета о закрытых тикетах
+// GET /api/admin/report (доступ модератор/админ)
 router.get('/report', isModeratorOrAdmin, async (req, res) => {
     const { startDate, endDate } = req.query;
 
@@ -71,7 +78,6 @@ router.get('/report', isModeratorOrAdmin, async (req, res) => {
         return res.status(400).json({ message: 'Требуются даты начала (startDate) и окончания (endDate).' });
     }
     
-    // Добавляем один день к конечной дате, чтобы включить весь последний день
     const endDateTime = new Date(endDate);
     endDateTime.setDate(endDateTime.getDate() + 1);
     
@@ -96,7 +102,6 @@ router.get('/report', isModeratorOrAdmin, async (req, res) => {
             ORDER BY t.closed_at DESC
         `, [startDate, endDateTime]);
         
-        // Для каждого тикета получаем историю изменения статусов (для полной картины)
         const reportsWithHistory = await Promise.all(reports.map(async (report) => {
             const [history] = await pool.query(`
                 SELECT new_status, change_time, u.username AS changer_username
@@ -106,10 +111,7 @@ router.get('/report', isModeratorOrAdmin, async (req, res) => {
                 ORDER BY sh.change_time ASC
             `, [report.ticket_id]);
             
-            return {
-                ...report,
-                history: history
-            };
+            return { ...report, history };
         }));
         
         res.json(reportsWithHistory);
@@ -119,6 +121,5 @@ router.get('/report', isModeratorOrAdmin, async (req, res) => {
         res.status(500).json({ message: 'Ошибка сервера при формировании отчета.' });
     }
 });
-
 
 module.exports = router;
