@@ -1,167 +1,283 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZERO Help Desk - Авторизация</title>
-    <style>
-        /* Базовые стили и фон */
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; 
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%); /* Мягкий градиент */
-            color: #333;
-        }
-        
-        /* Основной контейнер */
-        .container { 
-            width: 100%;
-            max-width: 420px; 
-            padding: 40px; 
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 16px; 
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05); /* Легкая тень */
-            backdrop-filter: blur(5px);
-            transition: all 0.3s ease;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Вход | ZERO Help Desk</title>
+  <link rel="manifest" href="/manifest.json">
+  <script>
+    (function(){
+      try{
+        var t = localStorage.getItem('zero_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      }catch(e){}
+    })();
+  </script>
+  <style>
+    :root{
+      --primary:        #4361ee;
+      --primary-600:    #3a56d4;
+      --bg:             #0b1220;
+      --text:           #e5e7eb;
+      --muted:          #9ca3af;
+      --surface:        rgba(15, 23, 42, 0.92);
+      --border:         #1f2937;
+      --danger:         #ef4444;
+      --success:        #22c55e;
+      --hint-bg:        rgba(15,23,42,.6);
+      --control-bg:     rgba(67,97,238,.08);
+      --control-border: #263247;
+      --shadow:         0 14px 30px rgba(0,0,0,.45);
+      --radius:         16px;
+      --focus-ring:     rgba(67,97,238,.35);
+      --head-grad-a:    rgba(16,185,129,.20);
+      --head-grad-b:    rgba(99,102,241,.22);
+      --head-base-a:    #0f172a;
+      --head-base-b:    #111827;
+      --selection-fg:   #ffffff;
+      --selection-bg:   rgba(67,97,238,.42);
+    }
 
-        /* Заголовки */
-        h1 { 
-            text-align: center; 
-            color: #1a202c; 
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-        h2 {
-            text-align: center;
-            color: #3182ce;
-            font-weight: 500;
-            font-size: 1.4em;
-            margin-top: 20px;
-            margin-bottom: 20px;
-        }
+    html[data-theme="light"]{
+      --primary:        #3f51f7;
+      --primary-600:    #3a4ce0;
+      --bg:             #f3f5f9;
+      --text:           #1f2937;
+      --muted:          #6b7280;
+      --surface:        rgba(255,255,255,0.92);
+      --border:         #e5e7eb;
+      --danger:         #e53935;
+      --success:        #2a9d8f;
+      --hint-bg:        rgba(67,97,238,.08);
+      --control-bg:     rgba(67,97,238,.04);
+      --control-border: #e0e3ec;
+      --shadow:         0 10px 24px rgba(0,0,0,.08);
+      --focus-ring:     rgba(67,97,238,.25);
+      --head-grad-a:    rgba(16,185,129,.18);
+      --head-grad-b:    rgba(99,102,241,.18);
+      --head-base-a:    #f9fafb;
+      --head-base-b:    #f1f5f9;
+      --selection-fg:   #ffffff;
+      --selection-bg:   rgba(67,97,238,.35);
+    }
 
-        /* Поля ввода */
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: #4a5568;
-            font-size: 0.95em;
-        }
-        input[type="text"], input[type="password"] { 
-            width: 100%; 
-            padding: 12px; 
-            margin-bottom: 20px; 
-            border: 1px solid #cbd5e0; 
-            border-radius: 8px; 
-            box-sizing: border-box; 
-            transition: border-color 0.3s, box-shadow 0.3s;
-            font-size: 1em;
-        }
-        input[type="text"]:focus, input[type="password"]:focus {
-            border-color: #3182ce;
-            box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2);
-            outline: none;
-        }
+    html,body{height:100%;margin:0}
+    body{
+      background:
+        radial-gradient(1200px 600px at 0% 0%, rgba(67,97,238,.15), transparent 60%),
+        radial-gradient(900px 500px at 100% 100%, rgba(16,185,129,.15), transparent 55%),
+        var(--bg);
+      color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      transition: background-color .25s ease, color .25s ease;
+    }
 
-        /* Кнопки */
-        button { 
-            background-color: #3182ce; 
-            color: white; 
-            padding: 12px 20px; 
-            margin-top: 10px;
-            border: none; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            width: 100%; 
-            font-size: 1.1em;
-            font-weight: 600;
-            transition: background-color 0.3s, transform 0.1s;
-        }
-        button:hover { 
-            background-color: #2b6cb0; 
-        }
-        button:active {
-            transform: scale(0.99);
-        }
+    ::selection{ color: var(--selection-fg); background: var(--selection-bg); }
 
-        /* Сообщения */
-        .message { 
-            padding: 15px; 
-            margin: 15px 0; 
-            border-radius: 8px; 
-            font-weight: 500;
-            text-align: center;
-        }
-        .success { 
-            background-color: #e6fffa; 
-            color: #38a169; 
-            border: 1px solid #38a169; 
-        }
-        .error { 
-            background-color: #fed7d7; 
-            color: #e53e3e; 
-            border: 1px solid #e53e3e; 
-        }
-        .hidden { display: none !important; }
-        
-        /* Стили для загрузки */
-        #loading-message {
-            color: #4a5568;
-            font-style: italic;
-        }
+    .page{
+      min-height:100svh;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      display:flex; align-items:center; justify-content:center;
+    }
 
-    </style>
+    .auth{
+      width:100%;
+      max-width:480px;
+      background: var(--surface);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      display:flex; flex-direction:column;
+      backdrop-filter: blur(10px);
+      transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease;
+    }
+
+    .auth-head{
+      position:relative;
+      padding:18px 20px 16px;
+      background:
+        radial-gradient(600px 300px at 0% 100%, var(--head-grad-a), transparent 70%),
+        radial-gradient(700px 320px at 100% 0%, var(--head-grad-b), transparent 65%),
+        linear-gradient(135deg, var(--head-base-a), var(--head-base-b));
+      color:#e5e7eb;
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+
+    html[data-theme="light"] .auth-head{
+      color:#111827;
+      border-bottom:1px solid rgba(0,0,0,.06);
+    }
+
+    .brand{ display:flex; align-items:center; gap:8px; font-weight:700; }
+    .brand h1{ margin:0; font-size:18px; letter-spacing:.2px; }
+
+    .badge{ font-size:12px; opacity:0.8; margin-top:4px; }
+
+    .theme-toggle{
+      position:absolute; right:14px; top:14px;
+      width:38px; height:38px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.10);
+      color:#fff; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      backdrop-filter: blur(4px);
+      transition: transform .12s ease, background .15s ease, border-color .15s ease;
+    }
+
+    html[data-theme="light"] .theme-toggle{
+      border-color: rgba(0,0,0,.08);
+      background: rgba(255,255,255,.8);
+      color:#111827;
+    }
+
+    .theme-toggle:hover{ transform: translateY(-1px); opacity:0.9; }
+    .theme-toggle:active{ transform: translateY(0); }
+
+    .auth-body{
+      padding:20px;
+      display:flex; flex-direction:column; gap:16px;
+      background: linear-gradient(0deg, rgba(255,255,255,.04), rgba(255,255,255,.04));
+      transition: background .25s ease;
+    }
+    html[data-theme="light"] .auth-body{
+      background: linear-gradient(0deg, rgba(255,255,255,.6), rgba(255,255,255,.4));
+    }
+
+    .field{ display:flex; flex-direction:column; gap:8px; }
+    .label{ font-size:13px; color:var(--muted); transition: color .25s ease; }
+
+    .control{
+      display:flex; align-items:center; gap:10px;
+      border:1px solid var(--control-border);
+      border-radius:12px;
+      background: var(--control-bg);
+      padding:12px 14px;
+      transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+
+    .control:focus-within{
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+
+    .input{
+      border:none; outline:none; flex:1; font-size:15px; min-height:22px;
+      background:transparent; color:var(--text);
+      caret-color: var(--primary);
+    }
+    .input::placeholder{ color: color-mix(in oklab, var(--muted) 80%, transparent); }
+
+    .icon-btn{
+      background:transparent; border:none; cursor:pointer; color:var(--muted);
+      font-size:18px; padding:0 2px; line-height:1;
+      transition: transform .12s ease, color .15s ease;
+    }
+    .icon-btn:hover{ color:var(--primary); }
+    .icon-btn:active{ transform:scale(.96); }
+
+    .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .caps{ font-size:12px; color:#f59e0b; }
+
+    .error{ color:var(--danger); font-size:13px; }
+    .info{ color:var(--success); font-size:13px; }
+
+    .hint{
+      font-size:12px; color:var(--muted);
+      background:var(--hint-bg);
+      padding:8px 10px; border-radius:10px;
+      transition: background .25s ease, color .25s ease;
+    }
+
+    .hidden{ display:none !important; }
+
+    .actions{
+      display:flex; flex-direction:column; gap:10px;
+      margin-top: 8px;
+    }
+
+    .btn{
+      --h:52px;
+      height:var(--h);
+      border:none; border-radius:12px;
+      background:var(--primary);
+      color:#fff; font-weight:800; letter-spacing:.2px;
+      display:flex; align-items:center; justify-content:center; gap:10px;
+      box-shadow:0 10px 22px color-mix(in oklab, var(--primary) 45%, black);
+      transition: transform .1s ease, box-shadow .15s ease, background .15s ease, opacity .2s ease;
+      cursor:pointer;
+    }
+
+    .btn:hover{ transform:translateY(-1px); background:var(--primary-600); box-shadow:0 12px 26px color-mix(in oklab, var(--primary) 55%, black); }
+    .btn:active{ transform:translateY(0); }
+    .btn:disabled{ opacity:.8; cursor:not-allowed; box-shadow:none; }
+
+    @media (max-width: 520px){
+      .auth{ border-radius:18px; max-width:100%; }
+      .auth-head .brand h1{ font-size:16px; }
+      .input{ font-size:16px; }
+      .btn{ --h:56px; font-size:16px; }
+      .actions{ position:sticky; bottom:calc(env(safe-area-inset-bottom) + 8px); background:transparent; padding-top:6px; margin-top:12px; z-index:2; }
+    }
+
+    .shake{ animation: shake .28s linear; }
+    @keyframes shake {
+      0%,100%{ transform:translateX(0); }
+      25%{ transform:translateX(-6px); }
+      75%{ transform:translateX(6px); }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>ZERO 🛠️ Help Desk</h1>
-        
-        <div id="status-display" class="message hidden"></div>
-        <p id="loading-message" style="text-align: center;">Загрузка, пожалуйста, подождите...</p>
-
-        <div id="admin-setup-area" class="hidden">
-            <h2>Первая настройка системы</h2>
-            <p style="text-align: center; color: #4a5568;">Создайте учетную запись администратора:</p>
-            <form id="admin-setup-form">
-                <label for="admin_username">Имя пользователя (логин):</label>
-                <input type="text" id="admin_username" name="username" required>
-                
-                <label for="admin_password">Пароль:</label>
-                <input type="password" id="admin_password" name="password" required>
-                
-                <button type="submit">Создать Администратора</button>
-            </form>
+  <div class="page">
+    <main class="auth" role="dialog" aria-labelledby="auth-title">
+      <header class="auth-head">
+        <div class="brand">
+          <span style="font-size:18px;">🔐</span>
+          <h1 id="auth-title">ZERO Help Desk — Вход</h1>
         </div>
+        <button class="theme-toggle" id="theme-toggle" aria-label="Сменить тему" title="Сменить тему">☀️</button>
+        <div class="badge">Безопасный доступ к системе</div>
+      </header>
 
-        <div id="login-area" class="hidden">
-            <h2>Вход в систему</h2>
-            <form id="login-form">
-                <label for="login_username">Имя пользователя:</label>
-                <input type="text" id="login_username" name="username" required>
-                
-                <label for="login_password">Пароль:</label>
-                <input type="password" id="login_password" name="password" required>
-                
-                <button type="submit">Войти</button>
-            </form>
-        </div>
+      <section class="auth-body">
+        <div id="global-msg" class="hint hidden" aria-live="polite"></div>
 
-        <div id="logged-in-area" class="hidden">
-            <h2>Добро пожаловать, <span id="user-display"></span>!</h2>
-            <p style="text-align: center;">Ваша роль: <strong id="role-display"></strong></p>
-            <p style="text-align: center; color: #38a169;">Вы успешно авторизованы. Перенаправление...</p>
-            <button id="logout-button" style="background-color: #e53e3e;">Выйти</button>
-        </div>
+        <form id="form-login" autocomplete="on" novalidate>
+          <div class="field">
+            <label class="label" for="login-username">Логин</label>
+            <div class="control" id="ctrl-username">
+              <input class="input" id="login-username" name="username" inputmode="text" autocomplete="username" placeholder="username" required>
+            </div>
+          </div>
 
-    </div>
+          <div class="field">
+            <div class="row">
+              <label class="label" for="login-password">Пароль</label>
+              <span id="caps-hint" class="caps hidden" aria-live="polite">Включен Caps Lock</span>
+            </div>
+            <div class="control" id="ctrl-password">
+              <input class="input" id="login-password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+              <button class="icon-btn" type="button" id="toggle-login-pass" aria-label="Показать пароль" title="Показать пароль">👁️</button>
+            </div>
+          </div>
 
-    <!-- Подключаем внешний JS, вместо inline-скрипта (CSP-friendly) -->
-    <script defer src="/js/index.js"></script>
+          <div id="login-msg" class="error hidden" aria-live="assertive"></div>
+
+          <div class="actions">
+            <button type="submit" class="btn" id="btn-login">
+              <span id="btn-login-text">Войти</span>
+              <span id="btn-login-spinner" class="hidden" aria-hidden="true">⏳</span>
+            </button>
+            <div class="hint">Нажмите Enter для входа</div>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script defer src="/js/login.js"></script>
 </body>
 </html>

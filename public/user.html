@@ -5,147 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZERO Help Desk - Клиент</title>
     <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/css/styles.css">
     <style>
-        :root {
-            --primary-color: #4361ee;
-            --primary-hover: #3a56d4;
-            --secondary-color: #7209b7;
-            --danger-color: #e63946;
-            --danger-hover: #d32f2f;
-            --success-color: #2a9d8f;
-            --warning-color: #f4a261;
-            --bg-color: #f8f9fa;
-            --card-bg: #ffffff;
-            --sidebar-bg: #1a202c;
-            --sidebar-text: #e2e8f0;
-            --text-color: #2d3748;
-            --text-light: #718096;
-            --border-color: #e2e8f0;
-            --border-radius: 12px;
-            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.15);
+        /* Ввод сообщения как в мессенджерах */
+        .chat-input-area {
+            position: sticky; bottom: 0; z-index: 2; background: #fff;
+            border-top: 1px solid #e2e8f0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+            display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color); line-height: 1.6; min-height: 100vh; }
-
-        .card { background: var(--card-bg); border-radius: var(--border-radius); box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px; transition: transform 0.2s, box-shadow 0.2s; }
-        .card:hover { box-shadow: var(--shadow-lg); }
-
-        .btn { display: inline-block; padding: 10px 18px; background-color: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95em; text-align: center; transition: all 0.2s; text-decoration: none; }
-        .btn:hover { background-color: var(--primary-hover); transform: translateY(-2px); }
-        .btn-danger { background-color: var(--danger-color); }
-        .btn-danger:hover { background-color: var(--danger-hover); }
-        .btn-outline { background-color: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); }
-        .btn-outline:hover { background-color: var(--primary-color); color: white; }
-        .btn-small { padding: 8px 14px; font-size: 0.85em; }
-        .btn-muted { background-color: #e9ecef; color: #495057; }
-        .btn-muted:hover { background-color: #dde1e5; }
-
-        .mobile-header { display: none; background: var(--card-bg); padding: 12px 16px; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 99; }
-        .mobile-header h1 { font-size: 1.2em; color: var(--primary-color); text-align: center; }
-
-        .desktop-layout { display: flex; min-height: 100vh; }
-        .sidebar { width: 280px; background: linear-gradient(135deg, var(--sidebar-bg) 0%, #2d3748 100%); color: var(--sidebar-text); padding: 24px 0; flex-shrink: 0; }
-        .sidebar-header { padding: 0 24px 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 20px; }
-        .sidebar-header h1 { color: white; font-size: 1.4em; margin: 0; font-weight: 700; }
-        .nav-links { flex: 1; }
-        .nav-link { display: flex; align-items: center; padding: 14px 24px; color: var(--sidebar-text); text-decoration: none; transition: all 0.3s; font-weight: 500; }
-        .nav-link:hover { background-color: rgba(255, 255, 255, 0.08); color: white; }
-        .nav-link.active { background-color: var(--primary-color); color: white; position: relative; }
-        .nav-link.active::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 4px; background-color: white; }
-        .nav-link i { margin-right: 12px; font-size: 1.2em; width: 24px; text-align: center; }
-        .sidebar-footer { padding: 20px 24px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
-        .user-info { margin-bottom: 20px; }
-        .user-info p { margin: 6px 0; font-size: 0.9em; opacity: 0.9; }
-
-        .main-content { flex: 1; padding: 30px; overflow-y: auto; }
-        .content-section { display: none; }
-        .content-section.active { display: block; }
-        .section-header { margin-bottom: 24px; display: flex; justify-content: between; align-items: center; }
-        .section-header h2 { color: var(--text-color); font-weight: 700; font-size: 1.6em; }
-
-        .mobile-tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background-color: white; display: none; justify-content: space-around; padding: 12px 0; box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1); z-index: 100; border-top: 1px solid var(--border-color); }
-        .tab-item { display: flex; flex-direction: column; align-items: center; padding: 5px 10px; color: var(--text-light); text-decoration: none; font-size: 0.75em; transition: color 0.3s; flex: 1; }
-        .tab-item.active { color: var(--primary-color); }
-        .tab-item i { font-size: 1.4em; margin-bottom: 4px; }
-
-        .form-group { margin-bottom: 18px; }
-        label { display: block; margin-bottom: 6px; font-weight: 600; color: var(--text-color); font-size: 0.95em; }
-        input[type="text"], input[type="file"], textarea, select { width: 100%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; box-sizing: border-box; transition: border-color 0.3s, box-shadow 0.3s; font-size: 1em; resize: vertical; font-family: inherit; }
-        input[type="text"]:focus, input[type="file"]:focus, textarea:focus, select:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2); outline: none; }
-
-        .alert { padding: 14px 16px; margin: 16px 0; border-radius: 8px; font-weight: 500; }
-        .alert-success { background-color: #e8f5e9; color: var(--success-color); border: 1px solid #c8e6c9; }
-        .alert-error { background-color: #ffebee; color: var(--danger-color); border: 1px solid #ffcdd2; }
-        .alert-info { background-color: #e3f2fd; color: var(--primary-color); border: 1px solid #bbdefb; }
-        .hidden { display: none !important; }
-
-        .table-container { overflow-x: auto; border-radius: var(--border-radius); box-shadow: var(--shadow); }
-        table { width: 100%; border-collapse: collapse; background: var(--card-bg); }
-        th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background-color: #f8f9fa; color: var(--text-color); font-weight: 600; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background-color: #f8f9fa; }
-
-        .status-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 0.8em; font-weight: 600; color: white; text-align: center; }
-        .status-New { background-color: var(--primary-color); } 
-        .status-In-Progress { background-color: var(--warning-color); } 
-        .status-Successful { background-color: var(--success-color); } 
-        .status-Rejected { background-color: var(--danger-color); } 
-        .status-On-Hold { background-color: var(--secondary-color); } 
-
-        .chat-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(5px); animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .chat-content { background-color: var(--card-bg); margin: 5% auto; padding: 0; width: 90%; max-width: 800px; border-radius: var(--border-radius); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; max-height: 85vh; overflow: hidden; animation: slideUp 0.3s ease; }
-        @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .chat-header { padding: 20px 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background-color: #f8f9fa; border-radius: var(--border-radius) var(--border-radius) 0 0; }
-        .chat-header h2 { color: var(--text-color); font-weight: 600; font-size: 1.3em; margin: 0; }
-        .close-button { font-size: 28px; font-weight: bold; color: var(--text-light); cursor: pointer; transition: color 0.3s; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
-        .close-button:hover { color: var(--danger-color); background-color: rgba(0,0,0,0.05); }
-        .chat-box { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; max-height: 50vh; }
-        .message-item { max-width: 80%; padding: 12px 16px; border-radius: 18px; position: relative; animation: messageAppear 0.3s ease; }
-        @keyframes messageAppear { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .self-message { align-self: flex-end; background-color: var(--primary-color); color: white; border-bottom-right-radius: 6px; }
-        .other-message { align-self: flex-start; background-color: #f1f3f5; color: var(--text-color); border-bottom-left-radius: 6px; }
-        .message-meta { font-size: 0.75em; opacity: 0.8; margin-top: 4px; }
-
-        .chat-readonly-banner { padding: 10px 16px; background: #fff3cd; color: #856404; border-top: 1px solid #ffeeba; border-bottom: 1px solid #ffeeba; }
-
-        .chat-input-area { padding: 20px 24px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; align-items: center; background-color: #f8f9fa; border-radius: 0 0 var(--border-radius) var(--border-radius); }
-        .chat-input-area input[type="text"] { flex: 1; margin-bottom: 0; }
-
-        /* Предпросмотр вложений */
-        .attachment-preview { display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; padding: 10px; background: #f8f9fa; border: 1px dashed #d9dee3; border-radius: 8px; }
-        .attachment-thumb { max-width: 140px; max-height: 110px; border-radius: 8px; background: #000; }
-        .attachment-meta { font-size: 0.85em; color: #495057; }
-        .attachment-actions { display: flex; gap: 8px; margin-top: 6px; }
-
-        .profile-info { margin-bottom: 24px; }
-        .profile-info p { margin: 10px 0; padding: 12px; background-color: #f8f9fa; border-radius: 8px; }
-        .profile-info strong { color: var(--text-color); }
-        .form-actions { display: flex; gap: 12px; margin-top: 20px; }
-
-        @media (max-width: 768px) {
-            .desktop-layout { flex-direction: column; }
-            .sidebar { display: none; }
-            .mobile-header { display: block; }
-            .main-content { padding: 20px 16px 80px; margin-left: 0; }
-            .mobile-tab-bar { display: flex; }
-            .card { padding: 18px; }
-            .section-header h2 { font-size: 1.4em; }
-            .chat-content { margin: 10% auto; width: 95%; max-height: 80vh; }
-            .chat-header { padding: 16px 20px; }
-            .chat-box { padding: 16px; max-height: 45vh; }
-            .chat-input-area { padding: 16px 20px; }
-            .message-item { max-width: 90%; }
-            .close-button { width: 36px; height: 36px; font-size: 24px; }
+        .chat-input-area #chat-input {
+            flex: 1; min-width: 0; border-radius: 22px; padding: 12px 14px; font-size: 15px; min-height: 44px;
+            border: 1px solid var(--border-color, #e2e8f0); outline: none;
         }
-        @media (max-width: 480px) {
-            .main-content { padding: 16px 12px 80px; }
-            .card { padding: 16px; }
-            .btn { padding: 10px 14px; font-size: 0.9em; }
-            .form-actions { flex-direction: column; }
-            .form-actions .btn { width: 100%; }
+        .chat-input-area #chat-input:focus {
+            border-color: var(--primary-color, #4361ee);
+            box-shadow: 0 0 0 3px rgba(67,97,238,0.15);
+        }
+        .attach-toggle {
+            background: #fff; border: 1px solid var(--border-color, #e2e8f0); color: var(--text-color, #2d3748);
+            width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer;
+        }
+        .send-button {
+            width: 42px; height: 42px; border-radius: 12px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px;
+        }
+        .attach-menu {
+            position: absolute; right: 16px; bottom: 60px; z-index: 3;
+            background: #fff; border: 1px solid var(--border-color, #e2e8f0); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            padding: 8px; display: none; gap: 8px; align-items: center;
+        }
+        .attach-menu.open { display: flex; }
+        .attach-menu .btn { width: auto; padding: 8px 10px; font-size: 13px; }
+
+        #chat-attachment-preview.attachment-preview { display: none; }
+        #chat-attachment-preview.attachment-preview.show { display: flex; }
+
+        /* Баннер статуса уведомлений */
+        .notif-banner { margin-top: 10px; color:#2a9d8f; font-size: 0.9em; }
+        .notif-banner.error { color:#e63946; }
+
+        @media (max-width: 768px){
+            .chat-content { max-height: 85vh; }
         }
     </style>
 </head>
@@ -212,9 +111,9 @@
                 <div class="card">
                     <h3>Мои активные запросы</h3>
                     <div class="table-container">
-                        <table id="active-tickets-table">
+                        <table id="active-tickets-table" class="responsive">
                             <thead>
-                                <tr><th>ID</th><th>Статус</th><th>Тема</th><th>Дата создания</th><th>Действие</th></tr>
+                            <tr><th>ID</th><th>Статус</th><th>Тема</th><th>Дата создания</th><th>Действие</th></tr>
                             </thead>
                             <tbody></tbody>
                         </table>
@@ -226,14 +125,16 @@
                 <div class="section-header"><h2>История запросов</h2></div>
                 <div class="card">
                     <div class="table-container">
-                        <table id="history-tickets-table">
+                        <table id="history-tickets-table" class="responsive">
                             <thead>
-                                <tr><th>ID</th><th>Статус</th><th>Тема</th><th>Дата создания</th><th>Дата закрытия</th><th>Действие</th></tr>
+                            <tr><th>ID</th><th>Статус</th><th>Тема</th><th>Дата создания</th><th>Дата закрытия</th><th>Действие</th></tr>
                             </thead>
                             <tbody></tbody>
                         </table>
                     </div>
-                    <p style="color:#6c757d; font-size:0.9em; margin-top:10px;">Подробную переписку по завершённому запросу можно открыть кнопкой «Просмотр».</p>
+                    <p style="color:#6c757d; font-size:0.9em; margin-top:10px;">
+                        Подробную переписку по завершённому запросу можно открыть кнопкой «Просмотр».
+                    </p>
                 </div>
             </div>
 
@@ -250,6 +151,7 @@
                             <p><strong>Телефон:</strong> <span id="user-phone-display"></span></p>
                         </div>
                         <button id="edit-user-info-button" class="btn btn-outline">Редактировать данные</button>
+                        <div id="notification-status" class="notif-banner hidden"></div>
                     </div>
 
                     <form class="card hidden" id="edit-user-info-form">
@@ -269,13 +171,11 @@
                         </div>
                     </form>
 
-                    <div class="card hidden" id="notification-prompt">
+                    <div class="card" id="notification-prompt">
                         <h3>Уведомления</h3>
-                        <p>Получайте уведомления о новых сообщениях!</p>
+                        <p>Получайте уведомления о новых сообщениях и изменениях статуса.</p>
                         <button id="enable-notifications-button" class="btn">Включить уведомления</button>
                     </div>
-
-                    <div id="notification-status" class="alert hidden"></div>
 
                     <div class="card">
                         <h3>Выход из системы</h3>
@@ -297,7 +197,7 @@
         <div class="chat-content">
             <div class="chat-header">
                 <h2>Чат по запросу #<span id="chat-ticket-id"></span>: <span id="chat-ticket-subject"></span></h2>
-                <span class="close-button">&times;</span>
+                <span class="close-button" title="Закрыть чат">&times;</span>
             </div>
 
             <div id="chat-readonly-banner" class="chat-readonly-banner hidden">
@@ -307,22 +207,26 @@
             <div id="chat-box" class="chat-box"></div>
 
             <div class="chat-input-area" id="chat-input-area">
-                <input type="text" id="chat-input" placeholder="Введите ваше сообщение...">
+                <input type="text" id="chat-input" placeholder="Сообщение">
                 <input type="file" id="chat-attachment" accept="image/*,video/*" capture="environment" style="display:none;">
-                <button type="button" id="chat-photo-button" class="btn btn-outline btn-small">📷 Фото</button>
-                <button type="button" id="chat-video-button" class="btn btn-outline btn-small">🎥 Видео</button>
-                <button type="button" id="chat-pick-button" class="btn btn-outline btn-small">📎 Файл</button>
-                <button id="chat-send-button" class="btn btn-small">Отправить</button>
+                <button type="button" id="attach-toggle" class="attach-toggle" aria-label="Вложения">＋</button>
+                <button id="chat-send-button" class="btn send-button" title="Отправить" aria-label="Отправить">➤</button>
+
+                <div class="attach-menu" id="attach-menu" role="menu" aria-hidden="true">
+                    <button type="button" id="chat-pick-button" class="btn btn-outline btn-small">📎 Файл</button>
+                    <button type="button" id="chat-photo-button" class="btn btn-outline btn-small">📷 Фото</button>
+                    <button type="button" id="chat-video-button" class="btn btn-outline btn-small">🎥 Видео</button>
+                </div>
             </div>
 
-            <div id="chat-attachment-preview" class="attachment-preview hidden" style="margin: 10px 20px;"></div>
+            <div id="chat-attachment-preview" class="attachment-preview" style="margin: 10px 20px;"></div>
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
 
     <script>
-        const API_BASE = 'http://localhost:3000/api';
+        const API_BASE = '/api';
 
         // Навигация
         const navLinks = document.querySelectorAll('.nav-link');
@@ -343,6 +247,11 @@
         const editPhoneNumberInput = document.getElementById('edit_phone_number');
         const cancelEditButton = document.getElementById('cancel-edit-button');
 
+        // Уведомления
+        const notificationPrompt = document.getElementById('notification-prompt');
+        const enableNotificationsButton = document.getElementById('enable-notifications-button');
+        const notificationStatus = document.getElementById('notification-status');
+
         // Заявки
         const createTicketForm = document.getElementById('create-ticket-form');
         const ticketMessage = document.getElementById('ticket-message');
@@ -359,8 +268,8 @@
         const btnVideoCapture = document.getElementById('btn-video-capture');
         const btnPickFile = document.getElementById('btn-pick-file');
 
-        // Чат
-        const socket = io('http://localhost:3000', { withCredentials: true });
+        // Чат (Socket.IO)
+        const socket = io('/', { withCredentials: true });
         let currentUserId = null;
         let currentUsername = null;
         let activeTicketId = null;
@@ -380,12 +289,100 @@
         const chatPickButton = document.getElementById('chat-pick-button');
         const chatInputArea = document.getElementById('chat-input-area');
         const chatReadonlyBanner = document.getElementById('chat-readonly-banner');
+        const attachToggle = document.getElementById('attach-toggle');
+        const attachMenu = document.getElementById('attach-menu');
 
-        // Уведомления (PWA)
-        const notificationPrompt = document.getElementById('notification-prompt');
-        const notificationStatus = document.getElementById('notification-status');
-        const enableNotificationsButton = document.getElementById('enable-notifications-button');
-        const VAPID_PUBLIC_KEY = "BLN3SAzXjExNCnsKksQmZTYQiC3KdFslZCeTmAKrrD_BnY6nsKzBy9BOMSzDOooMM-eqMQ8WIGWmRnZ5slmWu9g";
+        // RU статусы
+        const statusMapRU = { 'New':'Новая','In Progress':'В работе','On Hold':'На согласовании','Successful':'Успешно','Rejected':'Отклонено' };
+        const toRu = s => statusMapRU[s] || (s || '—');
+
+        // PWA: регистрация SW
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+        }
+
+        // Push: поддержка
+        function isPushSupported() {
+            return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+        }
+        function showNotifStatus(text, isError=false){
+            if (!notificationStatus) return;
+            notificationStatus.textContent = text;
+            notificationStatus.classList.remove('hidden','error');
+            if (isError) notificationStatus.classList.add('error');
+        }
+        function urlBase64ToUint8Array(base64String) {
+            if (!base64String) return new Uint8Array();
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+            return outputArray;
+        }
+        async function fetchVapidPublicKey(){
+            const res = await fetch(`${API_BASE}/auth/vapid-public-key`);
+            if (!res.ok) throw new Error('No VAPID public key');
+            const data = await res.json();
+            return data.publicKey;
+        }
+        async function registerServiceWorkerAndSubscribe() {
+            if (!isPushSupported()) return { ok:false, reason:'not_supported' };
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                let subscription = await registration.pushManager.getSubscription();
+                if (!subscription) {
+                    const publicKey = await fetchVapidPublicKey();
+                    const appServerKey = urlBase64ToUint8Array(publicKey);
+                    subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
+                }
+                const res = await fetch(`${API_BASE}/auth/save-subscription`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ subscription })
+                });
+                if (!res.ok) throw new Error('save-subscription failed');
+                return { ok:true };
+            } catch (e) {
+                return { ok:false, reason: e?.message || 'subscribe_error' };
+            }
+        }
+        async function refreshPushUI() {
+            if (!isPushSupported()) {
+                notificationPrompt?.classList.add('hidden');
+                return;
+            }
+            if (Notification.permission === 'granted') {
+                await registerServiceWorkerAndSubscribe();
+                notificationPrompt?.classList.add('hidden');
+                showNotifStatus('Уведомления включены.');
+            } else if (Notification.permission === 'denied') {
+                notificationPrompt?.classList.add('hidden');
+                showNotifStatus('Уведомления заблокированы в настройках браузера.', true);
+            } else {
+                notificationPrompt?.classList.remove('hidden');
+            }
+        }
+        enableNotificationsButton?.addEventListener('click', async () => {
+            if (!isPushSupported()) { showNotifStatus('Ваш браузер не поддерживает Push.', true); return; }
+            try {
+                const perm = await Notification.requestPermission();
+                if (perm !== 'granted') {
+                    showNotifStatus('Разрешение не предоставлено.', true);
+                    return;
+                }
+                const result = await registerServiceWorkerAndSubscribe();
+                if (result.ok) {
+                    showNotifStatus('Уведомления включены.');
+                    notificationPrompt?.classList.add('hidden');
+                } else {
+                    showNotifStatus('Не удалось подписаться на уведомления.', true);
+                }
+            } catch (e) {
+                showNotifStatus('Ошибка включения уведомлений.', true);
+            }
+        });
 
         // Навигация
         function switchTab(tabId) {
@@ -399,48 +396,6 @@
         navLinks.forEach(link => link.addEventListener('click', e => { e.preventDefault(); switchTab(link.dataset.tab); }));
         tabItems.forEach(item => item.addEventListener('click', e => { e.preventDefault(); switchTab(item.dataset.tab); }));
 
-        // Утилиты
-        function showMessage(element, type, text) { element.textContent = text; element.className = `alert ${type}`; element.classList.remove('hidden'); }
-        function hideMessage(element) { element.classList.add('hidden'); }
-        function formatDate(dt) { try { return new Date(dt).toLocaleString(); } catch { return dt; } }
-        function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-        function formatBytes(bytes) { if (!bytes && bytes !== 0) return ''; const k = 1024; const sizes = ['B','KB','MB','GB']; const i = Math.floor(Math.log(bytes)/Math.log(k)); return `${(bytes/Math.pow(k,i)).toFixed(1)} ${sizes[i]}`; }
-
-        // ServiceWorker
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js').catch(() => {});
-        }
-
-        // Push
-        function urlBase64ToUint8Array(base64String) {
-            if (!base64String) return new Uint8Array();
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-            const rawData = atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-            return outputArray;
-        }
-        async function registerServiceWorkerAndSubscribe() {
-            if (!VAPID_PUBLIC_KEY || !('serviceWorker' in navigator) || !('PushManager' in window) || Notification.permission !== 'granted') return;
-            try {
-                const registration = await navigator.serviceWorker.ready;
-                let subscription = await registration.pushManager.getSubscription();
-                if (!subscription) {
-                    subscription = await registration.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-                    });
-                }
-                await fetch(`${API_BASE}/auth/save-subscription`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ subscription })
-                });
-            } catch (e) { console.warn('Push subscribe error:', e); }
-        }
-
         // Аутентификация
         async function getAuthStatus() {
             try {
@@ -449,7 +404,7 @@
                 if (!data.isLoggedIn) { window.location.href = '/'; return null; }
                 currentUserId = data.userId; currentUsername = data.username;
                 updateUserInfoDisplay({ username: data.username, full_name: data.full_name, phone_number: data.phone_number });
-                registerServiceWorkerAndSubscribe();
+                await refreshPushUI();
                 return data;
             } catch (e) {
                 showMessage(document.getElementById('auth-check-message'), 'alert-error', 'Ошибка подключения к серверу.');
@@ -488,7 +443,7 @@
             const fullName = editFullNameInput.value.trim();
             const phoneNumber = editPhoneNumberInput.value.trim();
             try {
-                const res = await fetch(`${API_BASE}/auth/user/update-profile`, {
+                const res = await fetch(`${API_BASE}/auth/update-profile`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
                     body: JSON.stringify({ fullName, phoneNumber })
                 });
@@ -510,10 +465,17 @@
             }
         });
 
+        // Вспомогательные
+        function showMessage(element, type, text) { element.textContent = text; element.className = `alert ${type}`; element.classList.remove('hidden'); }
+        function hideMessage(element) { element.classList.add('hidden'); }
+        function formatDate(dt) { try { return new Date(dt).toLocaleString(); } catch { return dt; } }
+        function escapeHtml(s) { return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function formatBytes(bytes) { if (!bytes && bytes !== 0) return ''; const k = 1024; const sizes = ['B','KB','MB','GB']; const i = Math.floor(Math.log(bytes)/Math.log(k)); return `${(bytes/Math.pow(k,i)).toFixed(1)} ${sizes[i]}`; }
+
         // Создание заявки + предпросмотр вложения
         function renderAttachmentPreview(container, file, clearCb) {
             container.innerHTML = '';
-            if (!file) { container.classList.add('hidden'); return; }
+            if (!file) { container.classList.remove('show'); container.classList.add('hidden'); return; }
             const wrap = document.createElement('div');
             wrap.style.display = 'flex'; wrap.style.gap = '12px'; wrap.style.alignItems = 'center'; wrap.style.flexWrap = 'wrap';
 
@@ -541,12 +503,13 @@
             const btnRemove = document.createElement('button');
             btnRemove.type = 'button'; btnRemove.className = 'btn btn-danger btn-small';
             btnRemove.textContent = 'Удалить';
-            btnRemove.addEventListener('click', () => { clearCb(); if (thumb.src) URL.revokeObjectURL(thumb.src); container.innerHTML=''; container.classList.add('hidden'); });
+            btnRemove.addEventListener('click', () => { clearCb(); if (thumb.src) URL.revokeObjectURL(thumb.src); container.innerHTML=''; container.classList.remove('show'); container.classList.add('hidden'); });
             actions.appendChild(btnRemove);
 
             wrap.appendChild(thumb); wrap.appendChild(meta); wrap.appendChild(actions);
             container.appendChild(wrap);
             container.classList.remove('hidden');
+            container.classList.add('show');
         }
 
         btnPickFile.addEventListener('click', () => {
@@ -567,7 +530,6 @@
         attachmentInput.addEventListener('change', () => {
             const file = attachmentInput.files?.[0] || null;
             renderAttachmentPreview(attachmentPreview, file, () => { attachmentInput.value = ''; });
-            // вернуть универсальный accept
             attachmentInput.accept = 'image/*,video/*';
             attachmentInput.setAttribute('capture', 'environment');
         });
@@ -584,7 +546,6 @@
                 return;
             }
 
-            // Временное решение: добавляем кабинет в тему, чтобы сохранялось без изменения бэкенда
             const subjectWithRoom = roomNumber ? `[Кабинет: ${roomNumber}] ${subject}` : subject;
 
             try {
@@ -606,12 +567,11 @@
                 if (res.ok) {
                     showMessage(ticketMessage, 'alert-success', data.message || 'Запрос создан.');
                     createTicketForm.reset();
-                    attachmentPreview.innerHTML = ''; attachmentPreview.classList.add('hidden');
+                    attachmentPreview.innerHTML = ''; attachmentPreview.classList.add('hidden'); attachmentPreview.classList.remove('show');
                     await loadUserTickets();
                     switchTab('active-tickets');
                 } else {
                     showMessage(ticketMessage, 'alert-error', data.message || `Ошибка (${res.status}).`);
-                    // Если бэкенд не разрешает видео — возможна ошибка "Неподдерживаемый тип файла."
                 }
             } catch (error) {
                 showMessage(ticketMessage, 'alert-error', 'Ошибка подключения к серверу.');
@@ -629,11 +589,11 @@
                     .forEach(t => {
                         const tr = document.createElement('tr');
                         tr.innerHTML = `
-                            <td>${t.id}</td>
-                            <td><span class="status-badge status-${t.status.replace(' ', '-')}">${t.status}</span></td>
-                            <td>${t.subject}</td>
-                            <td>${formatDate(t.created_at || t.createdAt)}</td>
-                            <td><button class="btn btn-small" data-open-chat data-id="${t.id}" data-subject="${escapeHtml(t.subject)}" data-status="${t.status}">Открыть чат</button></td>
+                            <td data-label="ID">${t.id}</td>
+                            <td data-label="Статус"><span class="status-badge status-${t.status.replace(' ', '-')}">${toRu(t.status)}</span></td>
+                            <td data-label="Тема">${escapeHtml(t.subject)}</td>
+                            <td data-label="Дата создания">${formatDate(t.created_at || t.createdAt)}</td>
+                            <td data-label="Действие"><button class="btn btn-small" data-open-chat data-id="${t.id}" data-subject="${escapeHtml(t.subject)}" data-status="${t.status}">Открыть чат</button></td>
                         `;
                         activeTicketsTableBody.appendChild(tr);
                     });
@@ -645,7 +605,7 @@
                         status: btn.dataset.status
                     }, false));
                 });
-            } catch (e) { /* noop */ }
+            } catch (e) {}
         }
 
         async function loadHistoryTickets() {
@@ -658,12 +618,12 @@
                     .forEach(t => {
                         const tr = document.createElement('tr');
                         tr.innerHTML = `
-                            <td>${t.id}</td>
-                            <td><span class="status-badge status-${(t.status || '').replace(' ', '-')}">${t.status || ''}</span></td>
-                            <td>${t.subject}</td>
-                            <td>${formatDate(t.created_at || t.createdAt)}</td>
-                            <td>${t.closed_at ? formatDate(t.closed_at) : '-'}</td>
-                            <td><button class="btn btn-outline btn-small" data-view-chat data-id="${t.id}" data-subject="${escapeHtml(t.subject)}" data-status="${t.status}">Просмотр</button></td>
+                            <td data-label="ID">${t.id}</td>
+                            <td data-label="Статус"><span class="status-badge status-${(t.status || '').replace(' ', '-')}">${toRu(t.status || '')}</span></td>
+                            <td data-label="Тема">${escapeHtml(t.subject)}</td>
+                            <td data-label="Дата создания">${formatDate(t.created_at || t.createdAt)}</td>
+                            <td data-label="Дата закрытия">${t.closed_at ? formatDate(t.closed_at) : '-'}</td>
+                            <td data-label="Действие"><button class="btn btn-outline btn-small" data-view-chat data-id="${t.id}" data-subject="${escapeHtml(t.subject)}" data-status="${t.status}">Просмотр</button></td>
                         `;
                         historyTicketsTableBody.appendChild(tr);
                     });
@@ -675,7 +635,7 @@
                         status: btn.dataset.status
                     }, true));
                 });
-            } catch (e) { /* noop */ }
+            } catch (e) {}
         }
 
         // Чат
@@ -690,18 +650,31 @@
             }
         }
 
+        function closeAttachMenu(){
+            if (!attachMenu) return;
+            attachMenu.classList.remove('open');
+            attachMenu.setAttribute('aria-hidden','true');
+        }
+
         function closeChat() {
+            if (activeTicketId) socket.emit('leaveTicket', activeTicketId);
             chatModal.style.display = 'none';
             chatBox.innerHTML = '';
             activeTicketId = null;
             chatAttachmentInput.value='';
             chatAttachmentPreview.innerHTML='';
+            chatAttachmentPreview.classList.remove('show');
             chatAttachmentPreview.classList.add('hidden');
             setChatReadonlyState(false);
+            closeAttachMenu();
         }
         closeChatButton.addEventListener('click', closeChat);
 
         async function openChat(ticket, forceReadonly = false) {
+            // если уже были в другой комнате — выйдем
+            if (activeTicketId && Number(activeTicketId) !== Number(ticket.id)) {
+                socket.emit('leaveTicket', activeTicketId);
+            }
             activeTicketId = Number(ticket.id);
             chatTicketIdDisplay.textContent = activeTicketId;
             chatTicketSubjectDisplay.textContent = ticket.subject || '';
@@ -710,6 +683,7 @@
             setChatReadonlyState(forceReadonly || isClosed);
 
             chatModal.style.display = 'block';
+            closeAttachMenu();
             socket.emit('joinTicket', activeTicketId);
             await loadMessages(activeTicketId);
             chatBox.scrollTop = chatBox.scrollHeight;
@@ -722,50 +696,65 @@
                 chatBox.innerHTML = '';
                 msgs.forEach(renderMessage);
                 chatBox.scrollTop = chatBox.scrollHeight;
-            } catch (e) { /* noop */ }
+            } catch (e) {}
         }
 
         function renderMessage(msg) {
             const div = document.createElement('div');
-            const self = msg.senderId === currentUserId || msg.senderUsername === currentUsername;
+            const self = (typeof msg.senderId !== 'undefined' ? (msg.senderId === currentUserId) : (msg.senderUsername === currentUsername));
             div.className = `message-item ${self ? 'self-message' : 'other-message'}`;
             const safeText = msg.messageText ? escapeHtml(msg.messageText) : '';
             let attachHtml = '';
             if (msg.attachmentUrl) {
                 const url = msg.attachmentUrl;
-                const isImg = url.match(/\.(png|jpg|jpeg|gif|webp)$/i);
+                const isImg = url.match(/\.(png|jpg|jpeg|gif|webp|heic|heif)$/i);
                 const isVid = url.match(/\.(mp4|webm|ogg|mov)$/i);
                 if (isImg) {
                     attachHtml = `<div><img src="${url}" alt="Вложение" style="max-width:240px; border-radius:8px;"></div>`;
                 } else if (isVid) {
                     attachHtml = `<div><video src="${url}" controls style="max-width:240px; border-radius:8px;"></video></div>`;
                 } else {
-                    attachHtml = `<div><a href="${url}" target="_blank">📎 Вложение</a></div>`;
+                    attachHtml = `<div><a href="${url}" target="_blank" rel="noopener">📎 Вложение</a></div>`;
                 }
             }
+            const createdAt = msg.createdAt || new Date().toISOString();
             div.innerHTML = `
                 ${safeText ? `<div>${safeText}</div>` : ''}
                 ${attachHtml}
-                <div class="message-meta">${msg.senderUsername || ''} • ${formatDate(msg.createdAt)}</div>
+                <div class="message-meta">${escapeHtml(msg.senderUsername || '')} • ${formatDate(createdAt)}</div>
             `;
             chatBox.appendChild(div);
         }
 
-        // Чат: выбор и предпросмотр вложений
+        // Вложения — Telegram-like
+        attachToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const opened = attachMenu.classList.toggle('open');
+            attachMenu.setAttribute('aria-hidden', opened ? 'false' : 'true');
+        });
+        document.addEventListener('click', (e) => {
+            if (!attachMenu) return;
+            const insideMenu = attachMenu.contains(e.target);
+            const onToggle = attachToggle.contains(e.target);
+            if (!insideMenu && !onToggle) closeAttachMenu();
+        });
         chatPickButton.addEventListener('click', () => {
             if (chatReadOnly) return;
+            closeAttachMenu();
             chatAttachmentInput.accept = 'image/*,video/*';
             chatAttachmentInput.removeAttribute('capture');
             chatAttachmentInput.click();
         });
         chatPhotoButton.addEventListener('click', () => {
             if (chatReadOnly) return;
+            closeAttachMenu();
             chatAttachmentInput.accept = 'image/*';
             chatAttachmentInput.setAttribute('capture', 'environment');
             chatAttachmentInput.click();
         });
         chatVideoButton.addEventListener('click', () => {
             if (chatReadOnly) return;
+            closeAttachMenu();
             chatAttachmentInput.accept = 'video/*';
             chatAttachmentInput.setAttribute('capture', 'environment');
             chatAttachmentInput.click();
@@ -773,16 +762,17 @@
         chatAttachmentInput.addEventListener('change', () => {
             const file = chatAttachmentInput.files?.[0] || null;
             renderAttachmentPreview(chatAttachmentPreview, file, () => { chatAttachmentInput.value=''; });
+            chatAttachmentPreview.classList.toggle('show', !!file);
             chatAttachmentPreview.classList.toggle('hidden', !file);
-            // вернуть универсальный accept
             chatAttachmentInput.accept = 'image/*,video/*';
             chatAttachmentInput.setAttribute('capture', 'environment');
         });
 
-        chatSendButton.addEventListener('click', sendCurrentMessage);
+        // Отправка сообщений: текст — сокеты, файлы — HTTP (сервер сам эмитит)
+        chatSendButton.addEventListener('click', () => { closeAttachMenu(); sendCurrentMessage(); });
         chatInput.addEventListener('keydown', (e) => {
             if (chatReadOnly) return;
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrentMessage(); }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeAttachMenu(); sendCurrentMessage(); }
         });
 
         async function sendCurrentMessage() {
@@ -792,40 +782,39 @@
             const file = chatAttachmentInput.files?.[0] || null;
             if (!text && !file) return;
             try {
-                let res;
                 if (file) {
                     const fd = new FormData();
                     fd.set('ticketId', String(activeTicketId));
                     if (text) fd.set('messageText', text);
                     fd.set('attachment', file);
-                    res = await fetch(`${API_BASE}/tickets/messages/send`, { method: 'POST', body: fd, credentials: 'include' });
+                    const res = await fetch(`${API_BASE}/tickets/messages/send`, { method: 'POST', body: fd, credentials: 'include' });
+                    if (!res.ok) {
+                        const msg = await res.text();
+                        throw new Error(msg || `Ошибка (${res.status})`);
+                    }
                 } else {
-                    res = await fetch(`${API_BASE}/tickets/messages/send`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-                        body: JSON.stringify({ ticketId: activeTicketId, messageText: text })
-                    });
+                    socket.emit('sendMessage', { ticketId: activeTicketId, messageText: text });
                 }
-                const ok = res.ok;
-                const isJson = (res.headers.get('content-type')||'').includes('application/json');
-                const data = isJson ? await res.json() : { message: await res.text() };
-                if (!ok) throw new Error(data.message || `Ошибка (${res.status})`);
-
                 chatInput.value = '';
                 chatAttachmentInput.value = '';
-                chatAttachmentPreview.innerHTML = ''; chatAttachmentPreview.classList.add('hidden');
-                await loadMessages(activeTicketId);
-                chatBox.scrollTop = chatBox.scrollHeight;
+                chatAttachmentPreview.innerHTML = '';
+                chatAttachmentPreview.classList.remove('show');
+                chatAttachmentPreview.classList.add('hidden');
             } catch (err) {
                 alert(err.message || 'Ошибка отправки сообщения');
             }
         }
 
-        // Сокет-события (если бэкенд эмитит)
-        socket.on('messageCreated', (payload) => {
-            if (payload?.ticketId === activeTicketId) {
-                renderMessage(payload.message);
+        // Сокет-события
+        socket.on('receiveMessage', (msg) => {
+            if (Number(msg.ticketId) === Number(activeTicketId)) {
+                renderMessage(msg);
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
+        });
+        socket.on('ticketStatusUpdate', () => {
+            loadUserTickets();
+            loadHistoryTickets();
         });
 
         // Инициализация

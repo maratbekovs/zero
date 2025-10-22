@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Панель Модератора | ZERO Help Desk</title>
     <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/css/styles.css">
     <style>
         :root{
             --primary:#4361ee;
@@ -35,30 +36,24 @@
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
         }
 
-        /* Mobile header (fixed) — hidden by default, visible only on phones */
         .mobile-header{
-            display:none; /* hidden on desktop/tablet */
+            display:none;
             position:fixed; top:0; left:0; right:0; z-index:1002;
             background:var(--card);
             border-bottom:1px solid var(--border);
-            padding:12px 16px;
+            padding:12px 16px calc(12px + env(safe-area-inset-top));
             align-items:center; justify-content:center;
         }
         .mobile-header .title{
             margin:0; font-size:16px; color:var(--primary); font-weight:700; text-align:center;
         }
 
-        /* Desktop layout */
-        .layout{
-            display:flex;
-            min-height:100vh;
-        }
+        .layout{ display:flex; min-height:100vh; }
         .sidebar{
             width:280px;
             background:linear-gradient(135deg,#111827,#1f2937);
             color:#e5e7eb;
-            display:flex;
-            flex-direction:column;
+            display:flex; flex-direction:column;
             padding:20px 0;
         }
         .brand{ padding:0 24px 16px; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:16px; }
@@ -123,7 +118,7 @@
         .s-On\ Hold{ background:#7209b7; }
 
         /* Desktop chat panel */
-        .chat{ display:flex; flex-direction:column; height:560px; }
+        .chat{ display:flex; flex-direction:column; height:78vh; min-height:520px; }
         .chat-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:16px; border-bottom:1px solid var(--border); }
         .chat-title{ margin:0; font-size:16px; }
         .chat-meta{ font-size:13px; color:var(--muted); }
@@ -165,11 +160,16 @@
         }
         .mchat-head{
             position:sticky; top:0; z-index:2; background:#f8f9fb; border-bottom:1px solid var(--border);
-            display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 14px;
+            display:flex; align-items:center; justify-content:space-between; gap:8px;
+            padding:12px 14px calc(12px + env(safe-area-inset-top));
         }
-        .mchat-title{ margin:0; font-size:15px; font-weight:700; color:var(--text); }
+        .mchat-title{ margin:0; font-size:16px; font-weight:700; color:var(--text); }
         .mchat-sub{ font-size:12px; color:var(--muted); }
-        .mchat-close{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 10px; cursor:pointer; }
+        .mchat-close{
+            background:#fff; border:1px solid var(--border); border-radius:10px; cursor:pointer;
+            width:36px; height:36px; font-size:18px; color:var(--text); display:flex; align-items:center; justify-content:center;
+        }
+        .mchat-close:hover, .mchat-close:focus{ background:#f3f4f6; outline:none; }
 
         .mstatus-bar{
             display:flex; gap:8px; align-items:center;
@@ -188,14 +188,33 @@
 
         .mchat-actions{
             position:sticky; bottom:0; z-index:2; background:#fff; border-top:1px solid var(--border);
-            padding:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+            padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+            display:flex; gap:8px; align-items:center; flex-wrap:nowrap;
         }
-        .mchat-actions .input{ flex:1; }
+        .mchat-actions .input{
+            flex:1; min-width:0; border-radius:22px; padding:12px 14px; font-size:15px; min-height:44px;
+        }
+        .mattach-toggle{
+            background:#fff; border:1px solid var(--border); color:var(--text);
+            width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px;
+        }
+        #mchat-send{
+            width:42px; height:42px; border-radius:12px; padding:0;
+            display:flex; align-items:center; justify-content:center; font-size:18px;
+        }
+        .mattach-menu{
+            position:absolute; bottom:62px; right:12px; z-index:3;
+            background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-lg);
+            padding:8px; display:none; gap:8px; align-items:center;
+        }
+        .mattach-menu.open{ display:flex; }
+        .mattach-menu .btn{ width:auto; padding:8px 10px; font-size:13px; }
 
         .mpreview{ background:#f8fafc; border:1px dashed var(--border); border-radius:10px; padding:8px; display:none; gap:8px; align-items:center; margin:8px 10px 10px; }
         .mpreview.show{ display:flex; }
         .mpreview img, .mpreview video{ max-height:90px; border-radius:6px; }
 
+        /* Универсальная модалка */
         .modal-overlay{
             display:none; position:fixed; inset:0; z-index:1004; background:rgba(0,0,0,.45);
             align-items:center; justify-content:center; padding:20px;
@@ -212,7 +231,7 @@
         .modal-close{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 10px; cursor:pointer; }
         .modal-body{ padding:18px; }
         .modal-body .stack{ display:flex; flex-direction:column; gap:14px; }
-        .modal-footer{ padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+        .modal-footer{ padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; justify-content:flex-end; }
 
         @media (max-width: 1100px){
             .grid{ grid-template-columns:1fr; }
@@ -234,8 +253,7 @@
             th,td{ padding:10px; font-size:13px; }
             #tickets-table th.col-user, #tickets-table td.col-user,
             #tickets-table th.col-created, #tickets-table td.col-created { display:none; }
-            #users-table th.col-phone, #users-table td.col-phone,
-            #users-table th.col-created-users, #users-table td.col-created-users { display:none; }
+            /* В разделе "Пользователи" показываем все поля (responsive-карточки) */
             #report-table th.col-moderator, #report-table td.col-moderator,
             #report-table th.col-closed, #report-table td.col-closed { display:none; }
         }
@@ -293,7 +311,7 @@
                     <div class="card">
                         <div class="card-body">
                             <div class="table-wrap">
-                                <table id="tickets-table">
+                                <table id="tickets-table" class="responsive">
                                     <thead>
                                     <tr>
                                         <th>ID</th>
@@ -360,6 +378,7 @@
                             </div>
                         </div>
                     </div>
+                    <!-- /Desktop chat panel -->
                 </div>
             </section>
 
@@ -378,7 +397,7 @@
                     <div class="card">
                         <div class="card-body">
                             <div class="table-wrap">
-                                <table id="users-table">
+                                <table id="users-table" class="responsive">
                                     <thead>
                                     <tr>
                                         <th>ID</th>
@@ -444,7 +463,7 @@
                         <div class="card-header"><h3>Детализация</h3></div>
                         <div class="card-body">
                             <div class="table-wrap">
-                                <table id="report-table">
+                                <table id="report-table" class="responsive">
                                     <thead>
                                     <tr>
                                         <th>ID</th>
@@ -488,9 +507,92 @@
         <a href="#" class="tab-item" data-section="profile"><i>👤</i><span>Профиль</span></a>
     </div>
 
-    <!-- Локальный клиент Socket.IO (без внешнего CDN, дружит с строгой CSP 'self') -->
+    <!-- Mobile chat modal (телефон) -->
+    <div class="mchat-modal" id="mchat-modal">
+        <div class="mchat-wrap">
+            <div class="mchat-head">
+                <div>
+                    <h3 class="mchat-title">Чат #<span id="mchat-ticket-id">—</span></h3>
+                    <div class="mchat-sub">Тема: <span id="mchat-ticket-subject">—</span> • Статус: <strong id="mchat-status">—</strong></div>
+                </div>
+                <button class="mchat-close" id="mchat-close" aria-label="Закрыть чат">✕</button>
+            </div>
+
+            <div id="mchat-closed-banner" class="banner" style="display:none;">
+                Чат завершён. Новые сообщения отправлять нельзя — доступен только просмотр переписки и вложений.
+            </div>
+
+            <div class="mstatus-bar">
+                <select id="mstatus-select" class="input">
+                    <option value="In Progress">В работе</option>
+                    <option value="On Hold">На согласовании</option>
+                    <option value="Successful">Успешно</option>
+                    <option value="Rejected">Отклонено</option>
+                </select>
+                <button class="btn" id="mupdate-status-button">Обновить</button>
+            </div>
+            <div class="mstatus-info" id="mtime-spent-display" style="display:none;"></div>
+
+            <div id="mchat-box" class="mchat-box"></div>
+
+            <div class="mchat-actions" id="mchat-actions">
+                <input class="input" id="mchat-input" placeholder="Сообщение" />
+                <input type="file" id="mchat-attachment" accept="image/*,video/*" style="display:none;">
+                <button class="mattach-toggle" id="mattach-toggle" aria-label="Вложения">＋</button>
+                <button class="btn" id="mchat-send" title="Отправить" aria-label="Отправить">➤</button>
+
+                <!-- Popover меню вложений -->
+                <div class="mattach-menu" id="mattach-menu" role="menu" aria-hidden="true">
+                    <button class="btn ghost" id="mbtn-pick">📎 Файл</button>
+                    <button class="btn ghost" id="mbtn-photo">📷 Фото</button>
+                    <button class="btn ghost" id="mbtn-video">🎥 Видео</button>
+                </div>
+            </div>
+
+            <div class="mpreview" id="mpreview">
+                <div id="mpreview-thumb"></div>
+                <button class="btn ghost" id="mbtn-clear-preview">Убрать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка редактирования пользователя -->
+    <div class="modal-overlay" id="edit-user-modal" aria-hidden="true">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
+            <div class="modal-head">
+                <h3 class="modal-title" id="edit-user-title">Редактирование пользователя</h3>
+                <button class="modal-close" id="edit-user-close" aria-label="Закрыть">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="edit-user-message" class="muted"></div>
+                <div class="stack">
+                    <div>
+                        <label for="edit-user-username" class="muted" style="display:block; margin-bottom:6px;">Логин (только чтение)</label>
+                        <input id="edit-user-username" class="input" type="text" disabled>
+                    </div>
+                    <div>
+                        <label for="edit-user-fullname" style="display:block; margin-bottom:6px;">ФИО</label>
+                        <input id="edit-user-fullname" class="input" type="text" placeholder="Введите ФИО">
+                    </div>
+                    <div>
+                        <label for="edit-user-phone" style="display:block; margin-bottom:6px;">Телефон</label>
+                        <input id="edit-user-phone" class="input" type="text" placeholder="+7 ...">
+                    </div>
+                    <div>
+                        <label for="edit-user-role" class="muted" style="display:block; margin-bottom:6px;">Роль (только чтение)</label>
+                        <input id="edit-user-role" class="input" type="text" disabled>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn ghost" id="edit-user-cancel">Отмена</button>
+                <button class="btn" id="edit-user-save">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Локальный клиент Socket.IO -->
     <script src="/socket.io/socket.io.js"></script>
-    <!-- Внешний скрипт приложения (без inline — дружит с CSP) -->
     <script defer src="/js/moder.js"></script>
 </body>
 </html>

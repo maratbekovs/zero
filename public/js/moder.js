@@ -1,10 +1,47 @@
-// ВЕСЬ код инициализируем после полной загрузки DOM, чтобы не ловить null и "before initialization"
+// Инициализируем после загрузки DOM
 document.addEventListener('DOMContentLoaded', () => {
-  // Относительный API и локальный Socket.IO — не зависят от порта и дружат с CSP
   const API_BASE = '/api';
   const socket = io('/', { withCredentials: true });
 
-  // ------ DOM refs (всё объявляем сразу) ------
+  // Регистрация сервис-воркера и автоподписка на push (если уже выдано разрешение)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+  }
+  (async function ensurePush() {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+      if (Notification.permission !== 'granted') return;
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        const publicKey = await fetchVapidPublicKey();
+        const appServerKey = urlBase64ToUint8Array(publicKey);
+        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
+      }
+      await fetch(`${API_BASE}/auth/save-subscription`, {
+        method: 'POST', headers: { 'Content-Type':'application/json' }, credentials:'include',
+        body: JSON.stringify({ subscription })
+      });
+    } catch {}
+  })();
+
+  async function fetchVapidPublicKey(){
+    const res = await fetch(`${API_BASE}/auth/vapid-public-key`);
+    if (!res.ok) throw new Error('No VAPID public key');
+    const data = await res.json();
+    return data.publicKey;
+  }
+  function urlBase64ToUint8Array(base64String) {
+    if (!base64String) return new Uint8Array();
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }
+
+  // ------ DOM refs ------
   const meUsernameEl = byId('me-username');
   const meRoleEl = byId('me-role');
   const profileUsername = byId('profile-username');
@@ -24,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Desktop chat
   const d = {
+    panel: byId('chat-panel'),
     box: byId('chat-box'),
     ticketId: byId('chat-ticket-id'),
     subject: byId('chat-ticket-subject'),
@@ -66,14 +104,28 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSend: byId('mchat-send'),
     preview: byId('mpreview'),
     previewThumb: byId('mpreview-thumb'),
-    btnClearPreview: byId('mbtn-clear-preview')
+    btnClearPreview: byId('mbtn-clear-preview'),
+    attachToggle: byId('mattach-toggle'),
+    attachMenu: byId('mattach-menu')
   };
 
-  // Users (важно: объявлено до любых вызовов loadUsers)
+  // Users
   const usersTableBody = qs('#users-table tbody');
   const btnReloadUsers = byId('btn-reload-users');
   const btnCreateUser = byId('btn-create-user');
   const createUserMsg = byId('create-user-msg');
+
+  // Edit user modal
+  const editModal = byId('edit-user-modal');
+  const editTitle = byId('edit-user-title');
+  const editClose = byId('edit-user-close');
+  const editCancel = byId('edit-user-cancel');
+  const editSave = byId('edit-user-save');
+  const editMsg = byId('edit-user-message');
+  const editUsername = byId('edit-user-username');
+  const editFullname = byId('edit-user-fullname');
+  const editPhone = byId('edit-user-phone');
+  const editRole = byId('edit-user-role');
 
   // Reports
   const btnMakeReport = byId('btn-make-report');
@@ -92,6 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let me = { userId: null, username: null, role: null };
   let allTickets = [];
   let activeTicket = null;
+  let usersCache = [];
+  let editingUserId = null;
 
   // ------ Helpers ------
   function byId(id) { return document.getElementById(id); }
@@ -105,6 +159,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const dt = new Date(d);
     return isNaN(dt.getTime()) ? '—' : dt.toLocaleString();
   }
+  const statusMapRU = {
+    'New':'Новая',
+    'In Progress':'В работе',
+    'On Hold':'На согласовании',
+    'Successful':'Успешно',
+    'Rejected':'Отклонено'
+  };
+  function statusToRu(s){ return statusMapRU[s] || (s || '—'); }
+  function closeAttachMenu(){
+    if (m.attachMenu) {
+      m.attachMenu.classList.remove('open');
+      m.attachMenu.setAttribute('aria-hidden','true');
+    }
+  }
+  function showEditModal(){
+    if (!editModal) return;
+    editModal.style.display = 'flex';
+    editModal.setAttribute('aria-hidden','false');
+    setTimeout(()=> editFullname?.focus(), 0);
+    document.addEventListener('keydown', escCloseHandler);
+  }
+  function hideEditModal(){
+    if (!editModal) return;
+    editModal.style.display = 'none';
+    editModal.setAttribute('aria-hidden','true');
+    editMsg.textContent = '';
+    editingUserId = null;
+    document.removeEventListener('keydown', escCloseHandler);
+  }
+  function escCloseHandler(e){
+    if (e.key === 'Escape') hideEditModal();
+  }
+  function setBtnBusy(btn, busy){
+    if (!btn) return;
+    btn.disabled = !!busy;
+    if (btn.id === 'edit-user-save') btn.textContent = busy ? 'Сохранение...' : 'Сохранить';
+  }
 
   // ------ Auth ------
   async function ensureModerator() {
@@ -114,10 +205,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (!data.isLoggedIn || !['moderator','admin'].includes(data.role)) throw new Error('role');
       me = { userId:data.userId, username:data.username, role:data.role };
-      if (meUsernameEl) meUsernameEl.textContent = data.username;
-      if (meRoleEl) meRoleEl.textContent = `роль: ${data.role}`;
-      if (profileUsername) profileUsername.textContent = data.username;
-      if (profileRole) profileRole.textContent = data.role;
+      meUsernameEl && (meUsernameEl.textContent = data.username);
+      meRoleEl && (meRoleEl.textContent = `роль: ${data.role}`);
+      profileUsername && (profileUsername.textContent = data.username);
+      profileRole && (profileRole.textContent = data.role);
     }catch(e){
       location.href = '/';
     }
@@ -131,8 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sec==='tickets') reloadTickets();
     if (sec==='users') loadUsers();
   }
-  navLinks.forEach(a => on(a, 'click', e => { e.preventDefault(); activateSection(a.dataset.section); }));
-  mobileTabs.forEach(t => on(t, 'click', e => { e.preventDefault(); activateSection(t.dataset.section); }));
+  navLinks.forEach(a => on(a, 'click', e => { e.preventDefault(); activateSection(a.dataset.section); closeAttachMenu(); }));
+  mobileTabs.forEach(t => on(t, 'click', e => { e.preventDefault(); activateSection(t.dataset.section); closeAttachMenu(); }));
 
   // ------ Logout ------
   async function doLogout(){
@@ -165,24 +256,24 @@ document.addEventListener('DOMContentLoaded', () => {
       return matchesQ && matchesS;
     });
 
-    if (statTotal) statTotal.textContent = String(filtered.length);
-    if (statNew) statNew.textContent = String(filtered.filter(t=>t.status==='New').length);
-    if (statIP) statIP.textContent = String(filtered.filter(t=>t.status==='In Progress').length);
+    statTotal && (statTotal.textContent = String(filtered.length));
+    statNew && (statNew.textContent = String(filtered.filter(t=>t.status==='New').length));
+    statIP && (statIP.textContent = String(filtered.filter(t=>t.status==='In Progress').length));
 
     ticketsTableBody.innerHTML = '';
     for(const t of filtered){
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${t.id}</td>
-        <td class="col-user">
+        <td data-label="ID">${t.id}</td>
+        <td data-label="Пользователь" class="col-user">
           <div><strong>${escapeHtml(t.user_username || '')}</strong></div>
           <div class="muted">${escapeHtml(t.user_full_name || '')}</div>
           <div class="muted">${escapeHtml(t.user_phone || '')}</div>
         </td>
-        <td>${escapeHtml(t.subject || '')}</td>
-        <td><span class="status s-${(t.status || '').replaceAll(' ','\\ ')}">${t.status || ''}</span></td>
-        <td class="muted col-created">${formatDateSafe(t.created_at)}</td>
-        <td>
+        <td data-label="Тема">${escapeHtml(t.subject || '')}</td>
+        <td data-label="Статус"><span class="status s-${(t.status || '').replaceAll(' ','\\ ')}">${statusToRu(t.status)}</span></td>
+        <td data-label="Создан" class="muted col-created">${formatDateSafe(t.created_at)}</td>
+        <td data-label="Действия">
           <div class="row">
             <button class="btn small" data-open data-id="${t.id}">Открыть чат</button>
           </div>
@@ -202,6 +293,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ------ Chat ------
   function openChat(ticket){
+    // перейти из прошлой комнаты
+    if (activeTicket && activeTicket.id && activeTicket.id !== ticket.id) {
+      socket.emit('leaveTicket', activeTicket.id);
+    }
     activeTicket = ticket;
     if (isMobile()) openMobileChat(ticket);
     else openDesktopChat(ticket);
@@ -210,13 +305,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function openDesktopChat(t){
     if (!d.ticketId) return;
     d.ticketId.textContent = t.id;
-    if (d.subject) d.subject.textContent = t.subject || '';
-    if (d.userId) d.userId.textContent = t.user_id || '-';
-    if (d.status) d.status.textContent = t.status || '—';
+    d.subject && (d.subject.textContent = t.subject || '');
+    d.userId && (d.userId.textContent = t.user_id || '-');
+    d.status && (d.status.textContent = statusToRu(t.status));
 
     const isClosed = ['Successful','Rejected'].includes(t.status);
-    if (d.closedBanner) d.closedBanner.style.display = isClosed ? '' : 'none';
-    if (d.actions) d.actions.style.display = isClosed ? 'none' : 'flex';
+    d.closedBanner && (d.closedBanner.style.display = isClosed ? '' : 'none');
+    d.actions && (d.actions.style.display = isClosed ? 'none' : 'flex');
+
+    d.panel && d.panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     socket.emit('joinTicket', t.id);
     loadMessagesTo(t.id, d.box, false);
@@ -224,9 +321,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function openMobileChat(t){
     if (!m.modal) return;
-    if (m.ticketId) m.ticketId.textContent = t.id;
-    if (m.subject) m.subject.textContent = t.subject || '';
-    if (m.status) m.status.textContent = t.status || '—';
+    m.ticketId && (m.ticketId.textContent = t.id);
+    m.subject && (m.subject.textContent = t.subject || '');
+    m.status && (m.status.textContent = statusToRu(t.status));
 
     if (m.statusSelect){
       const allowed = ['In Progress','On Hold','Successful','Rejected'];
@@ -234,14 +331,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const isClosed = ['Successful','Rejected'].includes(t.status);
-    if (m.closedBanner) m.closedBanner.style.display = isClosed ? '' : 'none';
-    if (m.actions) m.actions.style.display = isClosed ? 'none' : 'flex';
+    m.closedBanner && (m.closedBanner.style.display = isClosed ? '' : 'none');
+    m.actions && (m.actions.style.display = isClosed ? 'none' : 'flex');
 
-    if (m.timeSpent){
-      m.timeSpent.style.display = 'none';
-      m.timeSpent.textContent = '';
-    }
+    m.timeSpent && (m.timeSpent.style.display = 'none', m.timeSpent.textContent = '');
 
+    closeAttachMenu();
     m.modal.style.display = 'block';
     socket.emit('joinTicket', t.id);
     loadMessagesTo(t.id, m.box, true);
@@ -250,12 +345,14 @@ document.addEventListener('DOMContentLoaded', () => {
   on(m.close, 'click', ()=> closeMobileChat());
   function closeMobileChat(){
     if (!m.modal) return;
+    if (activeTicket?.id) socket.emit('leaveTicket', activeTicket.id);
     m.modal.style.display = 'none';
-    if (m.box) m.box.innerHTML = '';
-    if (m.input) m.input.value = '';
-    if (m.file) m.file.value = '';
-    if (m.previewThumb) m.previewThumb.innerHTML = '';
-    if (m.preview) m.preview.classList.remove('show');
+    m.box && (m.box.innerHTML = '');
+    m.input && (m.input.value = '');
+    m.file && (m.file.value = '');
+    m.previewThumb && (m.previewThumb.innerHTML = '');
+    m.preview && m.preview.classList.remove('show');
+    closeAttachMenu();
   }
 
   async function loadMessagesTo(ticketId, container, isMobileChat){
@@ -279,11 +376,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let attach = '';
     if (mg.attachmentUrl){
       const url = mg.attachmentUrl;
-      const img = /\.(png|jpe?g|gif|webp)$/i.test(url);
+      const img = /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(url);
       const vid = /\.(mp4|webm|ogg|mov)$/i.test(url);
       if (img) attach = `<div class="attach"><img src="${url}" alt="attach"></div>`;
       else if (vid) attach = `<div class="attach"><video src="${url}" controls></video></div>`;
-      else attach = `<div class="attach"><a href="${url}" target="_blank">📎 Вложение</a></div>`;
+      else attach = `<div class="attach"><a href="${url}" target="_blank" rel="noopener">📎 Вложение</a></div>`;
     }
 
     el.innerHTML = `
@@ -294,12 +391,12 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(el);
   }
 
+  // Обновление статуса
   on(d.updateStatusBtn, 'click', async ()=>{
     if (!activeTicket) return;
     const newStatus = d.statusSelect?.value || 'In Progress';
     await updateStatusCommon(newStatus, false);
   });
-
   on(m.updateStatusBtn, 'click', async ()=>{
     if (!activeTicket) return;
     const newStatus = m.statusSelect?.value || 'In Progress';
@@ -318,23 +415,23 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
 
       if (isMobileUI){
-        if (m.status) m.status.textContent = data.newStatus || newStatus;
+        m.status && (m.status.textContent = statusToRu(data.newStatus || newStatus));
         if (data.timeSpent && m.timeSpent){
           m.timeSpent.style.display = '';
           m.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
         }
         const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
-        if (m.closedBanner) m.closedBanner.style.display = closed ? '' : 'none';
-        if (m.actions) m.actions.style.display = closed ? 'none' : 'flex';
+        m.closedBanner && (m.closedBanner.style.display = closed ? '' : 'none');
+        m.actions && (m.actions.style.display = closed ? 'none' : 'flex');
       }else{
-        if (d.status) d.status.textContent = data.newStatus || newStatus;
+        d.status && (d.status.textContent = statusToRu(data.newStatus || newStatus));
         if (data.timeSpent && d.timeSpent){
           d.timeSpent.style.display = '';
           d.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
         }
         const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
-        if (d.closedBanner) d.closedBanner.style.display = closed ? '' : 'none';
-        if (d.actions) d.actions.style.display = closed ? 'none' : 'flex';
+        d.closedBanner && (d.closedBanner.style.display = closed ? '' : 'none');
+        d.actions && (d.actions.style.display = closed ? 'none' : 'flex');
       }
 
       await reloadTickets();
@@ -354,14 +451,28 @@ document.addEventListener('DOMContentLoaded', () => {
   on(d.btnSend, 'click', ()=> sendMessage(false));
   on(d.input, 'keydown', (e)=>{ if (d.actions?.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(false); }});
 
-  // Mobile send
-  on(m.btnPick, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; m.file.accept='image/*,video/*'; m.file.removeAttribute('capture'); m.file.click(); });
-  on(m.btnPhoto, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; m.file.accept='image/*'; m.file.setAttribute('capture','environment'); m.file.click(); });
-  on(m.btnVideo, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; m.file.accept='video/*'; m.file.setAttribute('capture','environment'); m.file.click(); });
+  // Mobile send + меню вложений
+  on(m.attachToggle, 'click', (e)=>{
+    e.stopPropagation();
+    if (!m.attachMenu) return;
+    const opened = m.attachMenu.classList.toggle('open');
+    m.attachMenu.setAttribute('aria-hidden', opened ? 'false':'true');
+  });
+  document.addEventListener('click', (e)=>{
+    if (!isMobile()) return;
+    if (!m.attachMenu) return;
+    const clickedInsideMenu = m.attachMenu.contains(e.target);
+    const clickedToggle = m.attachToggle && m.attachToggle.contains(e.target);
+    if (!clickedInsideMenu && !clickedToggle) closeAttachMenu();
+  });
+
+  on(m.btnPick, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; closeAttachMenu(); m.file.accept='image/*,video/*'; m.file.removeAttribute('capture'); m.file.click(); });
+  on(m.btnPhoto, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; closeAttachMenu(); m.file.accept='image/*'; m.file.setAttribute('capture','environment'); m.file.click(); });
+  on(m.btnVideo, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; closeAttachMenu(); m.file.accept='video/*'; m.file.setAttribute('capture','environment'); m.file.click(); });
   on(m.btnClearPreview, 'click', ()=>{ if (!m.file || !m.preview || !m.previewThumb) return; m.file.value=''; m.previewThumb.innerHTML=''; m.preview.classList.remove('show'); });
   on(m.file, 'change', ()=> handlePreview(m.file, m.preview, m.previewThumb));
-  on(m.btnSend, 'click', ()=> sendMessage(true));
-  on(m.input, 'keydown', (e)=>{ if (m.actions?.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(true); }});
+  on(m.btnSend, 'click', ()=> { closeAttachMenu(); sendMessage(true); });
+  on(m.input, 'keydown', (e)=>{ if (m.actions?.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); closeAttachMenu(); sendMessage(true); }});
 
   function handlePreview(fileInput, wrap, thumb){
     const f = fileInput?.files?.[0];
@@ -393,48 +504,55 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!text && !file) return;
 
     try{
-      let res;
       if (file){
+        // вложения — через HTTP; сервер эмитит receiveMessage
         const fd = new FormData();
         fd.set('ticketId', String(activeTicket.id));
         if (text) fd.set('messageText', text);
         fd.set('attachment', file);
-        res = await fetch(`${API_BASE}/tickets/messages/send`, { method:'POST', body: fd, credentials:'include' });
+        const res = await fetch(`${API_BASE}/tickets/messages/send`, { method:'POST', body: fd, credentials:'include' });
+        const ok = res.ok;
+        const data = ok ? await res.json() : { message: await res.text() };
+        if (!ok) throw new Error(data.message || `Ошибка (${res.status})`);
       }else{
-        res = await fetch(`${API_BASE}/tickets/messages/send`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          credentials:'include',
-          body: JSON.stringify({ ticketId: activeTicket.id, messageText: text })
-        });
+        // текст — мгновенно через сокеты
+        socket.emit('sendMessage', { ticketId: activeTicket.id, messageText: text });
       }
-      const data = res.ok ? await res.json() : { message: await res.text() };
-      if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
 
-      if (ui.input) ui.input.value = '';
-      if (ui.file) ui.file.value = '';
-      if (ui.previewThumb) ui.previewThumb.innerHTML = '';
-      if (ui.preview) ui.preview.classList.remove('show');
+      ui.input && (ui.input.value = '');
+      ui.file && (ui.file.value = '');
+      ui.previewThumb && (ui.previewThumb.innerHTML = '');
+      ui.preview && ui.preview.classList.remove('show');
 
-      if (isMobileUI) {
-        await loadMessagesTo(activeTicket.id, m.box, true);
-        if (m.box) m.box.scrollTop = m.box.scrollHeight;
-      } else {
-        await loadMessagesTo(activeTicket.id, d.box, false);
-        if (d.box) d.box.scrollTop = d.box.scrollHeight;
-      }
     }catch(e){ alert(e.message || 'Ошибка отправки сообщения'); }
   }
 
-  // Socket updates
-  socket.on('messageCreated', (payload)=>{
-    if (!activeTicket || payload?.ticketId !== activeTicket.id || !payload.message) return;
+  // Сокеты
+  socket.on('receiveMessage', (payload)=>{
+    if (!activeTicket || Number(payload?.ticketId) !== Number(activeTicket.id)) return;
     if (m.modal && m.modal.style.display === 'block'){
-      appendMessageTo(payload.message, m.box, true);
-      if (m.box) m.box.scrollTop = m.box.scrollHeight;
+      appendMessageTo(payload, m.box, true);
+      m.box && (m.box.scrollTop = m.box.scrollHeight);
     } else {
-      appendMessageTo(payload.message, d.box, false);
-      if (d.box) d.box.scrollTop = d.box.scrollHeight;
+      appendMessageTo(payload, d.box, false);
+      d.box && (d.box.scrollTop = d.box.scrollHeight);
+    }
+  });
+
+  socket.on('ticketStatusUpdate', ({ ticketId, newStatus, timeSpent }) => {
+    // обновим таблицу и статус в чате
+    reloadTickets();
+    if (activeTicket && Number(activeTicket.id) === Number(ticketId)) {
+      d.status && (d.status.textContent = statusToRu(newStatus));
+      m.status && (m.status.textContent = statusToRu(newStatus));
+      const closed = ['Successful','Rejected'].includes(newStatus);
+      d.closedBanner && (d.closedBanner.style.display = closed ? '' : 'none');
+      d.actions && (d.actions.style.display = closed ? 'none' : 'flex');
+      m.closedBanner && (m.closedBanner.style.display = closed ? '' : 'none');
+      m.actions && (m.actions.style.display = closed ? 'none' : 'flex');
+      if (timeSpent && d.timeSpent) { d.timeSpent.style.display=''; d.timeSpent.textContent=`Время в работе: ${timeSpent}`; }
+      if (timeSpent && m.timeSpent) { m.timeSpent.style.display=''; m.timeSpent.textContent=`Время в работе: ${timeSpent}`; }
+      activeTicket.status = newStatus;
     }
   });
 
@@ -447,33 +565,34 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch(`${API_BASE}/admin/users`, { credentials:'include' });
       if (res.status === 403){
         usersTableBody.innerHTML = `<tr><td colspan="7">Нет прав для просмотра пользователей.</td></tr>`;
-        const totalEl = byId('users-total'); if (totalEl) totalEl.textContent = '0';
+        const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
         return;
       }
       const users = res.ok ? await res.json() : [];
+      usersCache = users.slice();
       usersTableBody.innerHTML = '';
       for(const u of users){
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${u.id}</td>
-          <td>${escapeHtml(u.username || '')}</td>
-          <td>${escapeHtml(u.full_name || '')}</td>
-          <td class="col-phone">${escapeHtml(u.phone_number || '')}</td>
-          <td>${escapeHtml(u.role || '')}</td>
-          <td class="col-created-users">${formatDateSafe(u.created_at)}</td>
-          <td><button class="btn small" data-edit="${u.id}">Изм.</button></td>
+          <td data-label="ID">${u.id}</td>
+          <td data-label="Логин">${escapeHtml(u.username || '')}</td>
+          <td data-label="ФИО">${escapeHtml(u.full_name || '')}</td>
+          <td data-label="Телефон" class="col-phone">${escapeHtml(u.phone_number || '')}</td>
+          <td data-label="Роль">${escapeHtml(u.role || '')}</td>
+          <td data-label="Создан" class="col-created-users">${formatDateSafe(u.created_at)}</td>
+          <td data-label="Действие"><button class="btn small" data-edit="${u.id}">Изм.</button></td>
         `;
         usersTableBody.appendChild(tr);
       }
-      const totalEl = byId('users-total'); if (totalEl) totalEl.textContent = String(users.length);
+      const totalEl = byId('users-total'); totalEl && (totalEl.textContent = String(users.length));
 
       usersTableBody.querySelectorAll('[data-edit]').forEach(btn=>{
-        btn.addEventListener('click', ()=> openEditUser(btn.getAttribute('data-edit')));
+        btn.addEventListener('click', ()=> openEditUser(Number(btn.getAttribute('data-edit'))));
       });
     }catch(e){
       console.warn(e);
       usersTableBody.innerHTML = `<tr><td colspan="7">Ошибка загрузки списка пользователей</td></tr>`;
-      const totalEl = byId('users-total'); if (totalEl) totalEl.textContent = '0';
+      const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
     }
   }
 
@@ -484,7 +603,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const payload = {
         username: byId('new-username')?.value.trim(),
         password: byId('new-password')?.value,
-        role: byId('new-role')?.value
+        role: byId('new-role')?.value,
+        full_name: byId('new-fullname')?.value?.trim() || null,
+        phone_number: byId('new-phone')?.value?.trim() || null
       };
       const res = await fetch(`${API_BASE}/admin/create-user`, {
         method:'POST',
@@ -501,22 +622,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Edit user
   function openEditUser(userId){
-    alert(`Редактирование пользователя #${userId} — реализуйте по необходимости`);
+    const u = usersCache.find(x => Number(x.id) === Number(userId));
+    if (!u) { alert('Пользователь не найден'); return; }
+    editingUserId = u.id;
+    editTitle && (editTitle.textContent = `Редактирование пользователя #${u.id}`);
+    editUsername && (editUsername.value = u.username || '');
+    editFullname && (editFullname.value = u.full_name || '');
+    editPhone && (editPhone.value = u.phone_number || '');
+    editRole && (editRole.value = u.role || '');
+    editMsg && (editMsg.textContent = '');
+    showEditModal();
   }
+  async function saveEditUser(){
+    if (!editingUserId) return;
+    const fullName = (editFullname?.value || '').trim();
+    const phoneNumber = (editPhone?.value || '').trim();
+    try{
+      setBtnBusy(editSave, true);
+      editMsg.style.color = '#718096';
+      editMsg.textContent = 'Сохраняем...';
+      const res = await fetch(`${API_BASE}/tickets/update-user-info`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        credentials:'include',
+        body: JSON.stringify({ userId: editingUserId, fullName, phoneNumber })
+      });
+      const data = res.ok ? await res.json() : { message: await res.text() };
+      if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
 
-  // ------ Reports ------
+      editMsg.style.color = '#2a9d8f';
+      editMsg.textContent = data.message || 'Данные обновлены';
+      await loadUsers();
+      const idx = usersCache.findIndex(x => x.id === editingUserId);
+      if (idx >= 0) {
+        usersCache[idx].full_name = fullName;
+        usersCache[idx].phone_number = phoneNumber;
+      }
+      setTimeout(hideEditModal, 600);
+    }catch(e){
+      editMsg.style.color = '#e63946';
+      editMsg.textContent = e.message || 'Ошибка сохранения';
+    }finally{
+      setBtnBusy(editSave, false);
+    }
+  }
+  on(editClose, 'click', hideEditModal);
+  on(editCancel, 'click', hideEditModal);
+  on(editSave, 'click', saveEditUser);
+  on(editModal, 'click', (e)=>{ if (e.target === editModal) hideEditModal(); });
+
+  // Reports
   on(btnMakeReport, 'click', async ()=>{
     if (!reportTableBody || !reportSummary || !reportMessage) return;
 
     reportTableBody.innerHTML = '';
     reportSummary.innerHTML = '<div class="muted">Готовим отчёт...</div>';
     reportMessage.textContent = '';
-    if (btnPrint) btnPrint.disabled = true;
+    btnPrint && (btnPrint.disabled = true);
 
-    const qs = new URLSearchParams({ startDate: startDate?.value, endDate: endDate?.value }).toString();
+    const qsParams = new URLSearchParams({ startDate: startDate?.value, endDate: endDate?.value }).toString();
     try{
-      const res = await fetch(`${API_BASE}/admin/report?${qs}`, { credentials:'include' });
+      const res = await fetch(`${API_BASE}/admin/report?${qsParams}`, { credentials:'include' });
       const data = res.ok ? await res.json() : [];
 
       const total = data.length;
@@ -532,28 +700,27 @@ document.addEventListener('DOMContentLoaded', () => {
       for(const r of data){
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${r.ticket_id}</td>
-          <td>${escapeHtml(r.subject || '')}</td>
-          <td>${escapeHtml(r.status || '')}</td>
-          <td>${escapeHtml(r.client_username || '')}</td>
-          <td class="col-moderator">${escapeHtml(r.moderator_username || '')}</td>
-          <td>${formatDateSafe(r.created_at)}</td>
-          <td class="col-closed">${formatDateSafe(r.closed_at)}</td>
+          <td data-label="ID">${r.ticket_id}</td>
+          <td data-label="Тема">${escapeHtml(r.subject || '')}</td>
+          <td data-label="Статус">${escapeHtml(statusToRu(r.status || ''))}</td>
+          <td data-label="Пользователь">${escapeHtml(r.client_username || '')}</td>
+          <td data-label="Модератор" class="col-moderator">${escapeHtml(r.moderator_username || '')}</td>
+          <td data-label="Создан">${formatDateSafe(r.created_at)}</td>
+          <td data-label="Закрыт" class="col-closed">${formatDateSafe(r.closed_at)}</td>
         `;
         reportTableBody.appendChild(tr);
       }
       reportMessage.textContent = total ? '' : 'За период нет закрытых тикетов';
-      if (btnPrint) btnPrint.disabled = !total;
+      btnPrint && (btnPrint.disabled = !total);
     }catch(e){
       reportSummary.innerHTML = '';
       reportMessage.textContent = 'Ошибка формирования отчёта';
     }
   });
 
-  // ------ Первичная инициализация ------
+  // ------ Init ------
   (async function init(){
     await ensureModerator();
-    // По умолчанию активна вкладка tickets (из разметки). Обновим список.
     await reloadTickets();
   })();
 });

@@ -1,82 +1,77 @@
-// public/service-worker.js
+/* Service Worker для ZERO Help Desk
+   - Принимает push и показывает нотификацию
+   - Обрабатывает клики по уведомлениям, открывает/фокусирует нужную вкладку
+*/
 
-// Имя для кэша PWA (для будущих улучшений оффлайн-работы)
-const CACHE_NAME = 'zero-helpdesk-cache-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/user.html',
-  '/moder.html'
-  // ... добавьте сюда CSS, JS и иконки
-];
-
-// Устанавливаем Service Worker и кэшируем основные ресурсы
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+  // Быстрая активация обновлённого SW
+  self.skipWaiting();
 });
 
-// Активируем Service Worker
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName); // Удаляем старые кэши
-          }
-        })
-      );
-    })
-  );
+  // Контроль над уже открытыми клиентами
+  event.waitUntil(self.clients.claim());
 });
 
-// Обработчик события Push-уведомлений
+// Безопасный парс данных push
+function parsePushData(event) {
+  try {
+    if (!event.data) return {};
+    const text = event.data.text();
+    try { return JSON.parse(text); } catch { return { body: text }; }
+  } catch {
+    return {};
+  }
+}
+
+// Показ уведомления
 self.addEventListener('push', (event) => {
-  console.log('[Service Worker] Push Received.');
+  const data = parsePushData(event) || {};
+  const title = data.title || 'ZERO — Новое уведомление';
+  const body = data.body || 'У вас есть новое сообщение.';
+  const url = data.url || '/';
+  const tag = data.tag || 'zero-helpdesk';
+  const ticketId = data.ticketId || null;
 
-  const data = event.data.json();
-
-  const title = data.title || 'Новое уведомление ZERO';
   const options = {
-    body: data.body || 'Вам пришло новое сообщение или изменился статус тикета.',
-    icon: '/icons/icon-72x72.png', // Используем иконку PWA
-    badge: '/icons/icon-72x72.png',
-    data: {
-      url: data.url || '/' // URL, который откроется при клике
-    }
+    body,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-72.png',
+    vibrate: [100, 50, 100],
+    tag,           // чтобы похожие уведомления группировались/обновлялись
+    renotify: true,
+    data: { url, ticketId },
+    // Доп. действия при желании (комментировано)
+    // actions: [
+    //   { action: 'open', title: 'Открыть' }
+    // ]
   };
 
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Переход/фокус по клику
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url || '/';
+
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    (async () => {
+      const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      // Если вкладка с этим URL уже есть — фокусируем её
+      const same = allClients.find((c) => c.url.includes(new URL(targetUrl, self.location.origin).pathname));
+      if (same) {
+        await same.focus();
+        try { same.navigate(targetUrl); } catch {}
+        return;
+      }
+      // Иначе открываем новую
+      await self.clients.openWindow(targetUrl);
+    })()
   );
 });
 
-// Обработчик события клика по уведомлению
-self.addEventListener('notificationclick', (event) => {
-  console.log('[Service Worker] Notification click received.');
-  event.notification.close();
-
-  const targetUrl = event.notification.data.url;
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
-      for (const client of clientList) {
-        // Если вкладка уже открыта, переключаемся на нее и фокусируемся
-        if (client.url === targetUrl && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      // Если вкладка не найдена или закрыта, открываем новую
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-    })
-  );
+// Необязательно, для аналитики
+self.addEventListener('notificationclose', (_event) => {
+  // Можно отправить метрику закрытия уведомления
 });
