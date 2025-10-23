@@ -466,10 +466,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!clickedInsideMenu && !clickedToggle) closeAttachMenu();
   });
 
-  on(m.btnPick, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; closeAttachMenu(); m.file.accept='image/*,video/*'; m.file.removeAttribute('capture'); m.file.click(); });
-  on(m.btnPhoto, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; closeAttachMenu(); m.file.accept='image/*'; m.file.setAttribute('capture','environment'); m.file.click(); });
-  on(m.btnVideo, 'click', ()=>{ if (m.actions?.style.display==='none') return; if (!m.file) return; closeAttachMenu(); m.file.accept='video/*'; m.file.setAttribute('capture','environment'); m.file.click(); });
-  on(m.btnClearPreview, 'click', ()=>{ if (!m.file || !m.preview || !m.previewThumb) return; m.file.value=''; m.previewThumb.innerHTML=''; m.preview.classList.remove('show'); });
+  on(d.btnPick, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='image/*,video/*'; d.file.removeAttribute('capture'); d.file.click(); });
+  on(d.btnPhoto, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='image/*'; d.file.setAttribute('capture','environment'); d.file.click(); });
+  on(d.btnVideo, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='video/*'; d.file.setAttribute('capture','environment'); d.file.click(); });  on(m.btnClearPreview, 'click', ()=>{ if (!m.file || !m.preview || !m.previewThumb) return; m.file.value=''; m.previewThumb.innerHTML=''; m.preview.classList.remove('show'); });
   on(m.file, 'change', ()=> handlePreview(m.file, m.preview, m.previewThumb));
   on(m.btnSend, 'click', ()=> { closeAttachMenu(); sendMessage(true); });
   on(m.input, 'keydown', (e)=>{ if (m.actions?.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); closeAttachMenu(); sendMessage(true); }});

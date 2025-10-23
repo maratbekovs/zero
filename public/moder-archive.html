@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>ZERO Help Desk — Архив</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+    .page-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+    .muted { color:#6c757d; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .toolbar .row { display:flex; gap:8px; flex-wrap:wrap; }
+    .btn-small { padding: 8px 10px; font-size: 0.9em; }
+    /* Мобильные улучшения */
+    @media (max-width: 768px) {
+      .page-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .toolbar .row { width: 100%; flex-direction: column; }
+      .toolbar .input, .toolbar .btn { width: 100%; }
+    }
+    /* Поддержка адаптивной таблицы уже есть в styles.css через table.responsive */
+  </style>
+</head>
+<body>
+  <div class="mobile-header">
+    <h1 class="title">ZERO 🛡️ Help Desk — Архив</h1>
+  </div>
+
+  <div class="container">
+    <div class="page-head">
+      <div>
+        <h2>Архив завершённых заявок</h2>
+        <div class="muted">Статусы: «Успешно» и «Отклонено». Последние закрытые — выше.</div>
+      </div>
+      <div class="row">
+        <a class="btn btn-outline" href="/moder.html">← Назад к модератору</a>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="row">
+        <input class="input" id="search" type="search" placeholder="Поиск по теме/пользователю..." />
+        <select id="filter-status" class="input" aria-label="Фильтр по статусу">
+          <option value="">Все завершённые</option>
+          <option value="Successful">Успешные</option>
+          <option value="Rejected">Отклонённые</option>
+        </select>
+        <button class="btn" id="btn-reload">Обновить</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-container">
+        <table id="archive-table" class="responsive">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th class="col-user">Пользователь</th>
+              <th>Тема</th>
+              <th>Статус</th>
+              <th class="col-created">Создан</th>
+              <th class="col-closed">Закрыт</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="archive-table-body"></tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin-top:10px;">
+        Подробную переписку по заявке можно открыть в модераторе.
+      </p>
+    </div>
+  </div>
+
+  <div class="mobile-tab-bar" style="display:none;"></div>
+  <script src="/js/moder-archive.js"></script>
+</body>
+</html>
