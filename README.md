@@ -92,4 +92,8 @@ ALTER TABLE users
   FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
 );
 
+ALTER TABLE messages
+  ADD COLUMN client_msg_id VARCHAR(64) NULL,
+  ADD UNIQUE KEY uniq_client_msg_id (client_msg_id);
+
 -->
