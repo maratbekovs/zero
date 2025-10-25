@@ -1,4 +1,11 @@
 // routes/ticketRoutes.js
+//
+// Полная версия с:
+// - мгновенным оповещением модераторов о новых/изменённых тикетах (Socket.IO, событие "ticketsReload")
+// - ограничением смены статусов: moderator => только "In Progress"/"On Hold"; admin => любые
+// - назначением ответственного модератора (только admin) — POST /api/tickets/assign
+// - отправкой сообщений с мультивложениями (attachments[]) и обратной совместимостью с одиночным attachment
+// - историей статусов и push-уведомлениями
 
 const express = require('express');
 const router = express.Router();
@@ -8,7 +15,7 @@ const fs = require('fs');
 const webPush = require('web-push');
 
 const { pool } = require('../db');
-const { isAuthenticated, isModeratorOrAdmin } = require('./authRoutes');
+const { isAuthenticated, isModeratorOrAdmin, isAdmin } = require('./authRoutes');
 
 // Настройка VAPID для отправки push (если есть ключи)
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -19,7 +26,7 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   );
 }
 
-// Помощники отправки push
+// Помощники push
 async function sendPushToUserId(userId, payload) {
   try {
     const [rows] = await pool.query('SELECT push_subscription FROM users WHERE id = ?', [userId]);
@@ -55,88 +62,80 @@ async function sendPushToAllModerators(payload) {
   } catch {}
 }
 
-// --- Конфигурация Multer (хранение файлов вложений) ---
+// --- Multer (хранение вложений сообщений) ---
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, 'uploads/'),
-  filename: (_req, file, cb) => cb(null, 'file-' + Date.now() + path.extname(file.originalname))
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '..', 'uploads', 'attachments');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '');
+    cb(null, `att-${Date.now()}${ext || ''}`);
+  }
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
-  fileFilter: (_req, file, cb) => {
-    const ALLOWED_EXT = new Set([
-      '.jpeg', '.jpg', '.png', '.gif', '.webp',
-      '.pdf', '.doc', '.docx',
-      '.mp4', '.webm', '.ogg', '.mov',
-      '.heic', '.heif'
-    ]);
-    const ALLOWED_MIME_PREFIX = ['image/', 'video/'];
-    const ALLOWED_MIME_EXACT = new Set([
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'image/heic',
-      'image/heif'
-    ]);
-    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
-    const mime = (file.mimetype || '').toLowerCase();
-    const byExt = ALLOWED_EXT.has(ext);
-    const byMime = ALLOWED_MIME_EXACT.has(mime) || ALLOWED_MIME_PREFIX.some(p => mime.startsWith(p));
-    if (byExt && byMime) return cb(null, true);
-    cb(new Error('Неподдерживаемый тип файла.'));
-  }
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB на файл
 });
 
 // ---------------------------------------------------
-// POST /api/tickets/new — создание тикета (с первым сообщением)
+// POST /api/tickets/create — создать тикет (пользователь)
+// (оставлен прием одиночного файла через 'attachment' как было)
 // ---------------------------------------------------
-router.post('/new', isAuthenticated, upload.single('attachment'), async (req, res) => {
+router.post('/create', isAuthenticated, upload.single('attachment'), async (req, res) => {
   const userId = req.session.userId;
-  const { subject, description } = req.body;
-
-  const messageText = description;
-  const attachmentUrl = req.file ? `/uploads/${req.file.filename}` : null;
-
-  if (!subject || !messageText) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ message: 'Требуется тема и текст обращения.' });
+  const { subject, description } = req.body || {};
+  if (!subject || String(subject).trim() === '') {
+    return res.status(400).json({ message: 'Укажите тему тикета.' });
   }
+
+  const attachmentUrl = req.file ? `/uploads/attachments/${req.file.filename}` : null;
 
   let connection;
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // 1. Тикет
-    const [ticketResult] = await connection.query(
+    const [ins] = await connection.query(
       'INSERT INTO tickets (user_id, subject, status) VALUES (?, ?, ?)',
-      [userId, subject, 'New']
+      [userId, subject.trim(), 'New']
     );
-    const ticketId = ticketResult.insertId;
+    const ticketId = ins.insertId;
 
-    // 2. Первое сообщение
-    await connection.query(
-      'INSERT INTO messages (ticket_id, sender_id, message_text, attachment_url) VALUES (?, ?, ?, ?)',
-      [ticketId, userId, messageText, attachmentUrl]
-    );
+    if ((description && String(description).trim()) || attachmentUrl) {
+      const [msgIns] = await connection.query(
+        'INSERT INTO messages (ticket_id, sender_id, message_text, attachment_url) VALUES (?, ?, ?, ?)',
+        [ticketId, userId, description?.trim() || '', null] // attachment_url не используем для множества
+      );
+      const messageId = msgIns.insertId;
 
-    // 3. История статусов
-    await connection.query(
-      'INSERT INTO status_history (ticket_id, user_id, old_status, new_status) VALUES (?, ?, ?, ?)',
-      [ticketId, userId, null, 'New']
-    );
+      if (attachmentUrl) {
+        await connection.query(
+          'INSERT INTO message_attachments (message_id, url, mime_type, size) VALUES (?, ?, ?, ?)',
+          [messageId, attachmentUrl, req.file.mimetype || null, req.file.size || null]
+        );
+      }
+    }
 
     await connection.commit();
 
-    res.status(201).json({
-      message: '✅ Запрос успешно создан.',
-      ticketId,
-      status: 'New'
-    });
+    const io = req.app.get('io');
+    if (io) io.to('moderators').emit('ticketsReload');
+
+    try {
+      await sendPushToAllModerators({
+        title: `[ZERO] Новый тикет`,
+        body: `Создан тикет #${ticketId}: ${subject.substring(0, 60)}`,
+        url: `/moder.html`
+      });
+    } catch {}
+
+    res.status(201).json({ ticketId, message: 'Тикет создан.' });
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('Ошибка создания тикета:', error);
-    res.status(500).json({ message: 'Ошибка сервера при создании запроса.' });
+    res.status(500).json({ message: 'Ошибка сервера при создании тикета.' });
   } finally {
     if (connection) connection.release();
   }
@@ -150,9 +149,14 @@ router.get('/my', isAuthenticated, async (req, res) => {
 
   try {
     const [tickets] = await pool.query(
-      `SELECT t.*, t.created_at AS updated_at, u.username AS moderator_username
+      `SELECT 
+         t.*,
+         t.created_at AS updated_at,
+         u_mod.username AS moderator_username,
+         u_mod.full_name AS moderator_full_name,
+         u_mod.avatar_url AS moderator_avatar_url
        FROM tickets t
-       LEFT JOIN users u ON t.moderator_id = u.id
+       LEFT JOIN users u_mod ON t.moderator_id = u_mod.id
        WHERE t.user_id = ?
        ORDER BY t.created_at DESC`,
       [userId]
@@ -165,7 +169,7 @@ router.get('/my', isAuthenticated, async (req, res) => {
 });
 
 // ---------------------------------------------------
-// GET /api/tickets/all — список всех тикетов (модераторы)
+// GET /api/tickets/all — список всех тикетов (модераторы/админы)
 // ---------------------------------------------------
 router.get('/all', isModeratorOrAdmin, async (_req, res) => {
   try {
@@ -179,7 +183,10 @@ router.get('/all', isModeratorOrAdmin, async (_req, res) => {
         u_user.username AS user_username,
         u_user.full_name AS user_full_name,
         u_user.phone_number AS user_phone,
-        u_mod.username AS moderator_username
+        u_user.avatar_url AS user_avatar_url,
+        u_mod.username AS moderator_username,
+        u_mod.full_name AS moderator_full_name,
+        u_mod.avatar_url AS moderator_avatar_url
       FROM tickets t
       JOIN users u_user ON t.user_id = u_user.id
       LEFT JOIN users u_mod ON t.moderator_id = u_mod.id
@@ -194,7 +201,7 @@ router.get('/all', isModeratorOrAdmin, async (_req, res) => {
 });
 
 // ---------------------------------------------------
-// GET /api/tickets/:ticketId/messages — сообщения тикета
+// GET /api/tickets/:ticketId/messages — сообщения тикета (c attachments[])
 // ---------------------------------------------------
 router.get('/:ticketId/messages', isAuthenticated, async (req, res) => {
   const { ticketId } = req.params;
@@ -210,7 +217,7 @@ router.get('/:ticketId/messages', isAuthenticated, async (req, res) => {
 
     const ticket = tickets[0];
     const isAuthorized = ticket.user_id === userId || userRole === 'moderator' || userRole === 'admin';
-    if (!isAuthorized) return res.status(403).json({ message: 'Доступ запрещен.' });
+    if (!isAuthorized) return res.status(403).json({ message: 'Доступ запрещён.' });
 
     const [messages] = await pool.query(`
       SELECT
@@ -218,162 +225,210 @@ router.get('/:ticketId/messages', isAuthenticated, async (req, res) => {
         m.message_text AS messageText,
         m.created_at AS createdAt,
         m.sender_id AS senderId,
-        m.attachment_url AS attachmentUrl,
         u.username AS senderUsername,
-        u.role AS senderRole
+        u.role AS senderRole,
+        u.avatar_url AS senderAvatarUrl
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       WHERE m.ticket_id = ?
       ORDER BY m.created_at ASC
     `, [ticketId]);
 
-    const formattedMessages = messages.map(msg => ({
+    const ids = messages.map(m => m.id);
+    let attachmentsByMsg = {};
+    if (ids.length) {
+      const [atts] = await pool.query(
+        'SELECT message_id, url, mime_type, size FROM message_attachments WHERE message_id IN (?) ORDER BY id ASC',
+        [ids]
+      );
+      for (const a of atts) {
+        attachmentsByMsg[a.message_id] = attachmentsByMsg[a.message_id] || [];
+        attachmentsByMsg[a.message_id].push({ url: a.url, mime_type: a.mime_type, size: a.size });
+      }
+    }
+
+    const formatted = messages.map(msg => ({
       ...msg,
-      createdAt: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString()
+      createdAt: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString(),
+      attachmentUrl: null, // для обратной совместимости (раньше был один файл)
+      attachments: attachmentsByMsg[msg.id] || []
     }));
 
-    res.json(formattedMessages);
+    res.json(formatted);
   } catch (error) {
-    console.error('Ошибка получения сообщений:', error);
+    console.error('Ошибка получения сообщений тикета:', error);
     res.status(500).json({ message: 'Ошибка сервера при загрузке сообщений.' });
   }
 });
 
 // ---------------------------------------------------
-// POST /api/tickets/messages/send — сообщение (вложение/текст через HTTP)
-// Сервер эмитит receiveMessage и рассылает push
+// POST /api/tickets/messages/send — отправить сообщение (текст + несколько файлов)
+// Принимаем И attachments[] (много), И fallback attachment (один)
 // ---------------------------------------------------
-router.post('/messages/send', isAuthenticated, upload.single('attachment'), async (req, res) => {
-  const senderId = req.session.userId;
-  const senderRole = req.session.userRole;
-  const { ticketId, messageText } = req.body;
-  const attachmentUrl = req.file ? `/uploads/${req.file.filename}` : null;
+router.post(
+  '/messages/send',
+  isAuthenticated,
+  upload.fields([
+    { name: 'attachments', maxCount: 10 },
+    { name: 'attachment',  maxCount: 1  } // для обратной совместимости со старым фронтом
+  ]),
+  async (req, res) => {
+    const { ticketId } = req.body;
+    let { messageText } = req.body;
+    messageText = (messageText || '').trim();
 
-  if (!ticketId || (!messageText && !attachmentUrl)) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ success: false, message: 'Требуется ID тикета и текст или вложение.' });
-  }
+    const files = [
+      ...(req.files?.attachments || []),
+      ...(req.files?.attachment  || [])
+    ];
 
-  let connection;
-  let newStatus = null;
-  let recipientId = null;
-
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    // 1. Сообщение
-    const [messageResult] = await connection.query(
-      'INSERT INTO messages (ticket_id, sender_id, message_text, attachment_url) VALUES (?, ?, ?, ?)',
-      [ticketId, senderId, messageText || '', attachmentUrl]
-    );
-    const messageId = messageResult.insertId;
-
-    // 2. Тикет/статус
-    const [ticket] = await connection.query('SELECT status, moderator_id, user_id FROM tickets WHERE id = ?', [ticketId]);
-    const currentStatus = ticket[0].status;
-    let moderatorId = ticket[0].moderator_id;
-    const ticketOwnerId = ticket[0].user_id;
-
-    recipientId = senderRole === 'user' ? (moderatorId || null) : ticketOwnerId;
-
-    if (senderRole === 'moderator' || senderRole === 'admin') {
-      if (['New', 'Successful', 'Rejected'].includes(currentStatus)) {
-        newStatus = 'In Progress';
-        if (!moderatorId) moderatorId = senderId;
-
-        await connection.query(
-          'UPDATE tickets SET status = ?, moderator_id = ?, closed_at = NULL WHERE id = ?',
-          [newStatus, moderatorId, ticketId]
-        );
-
-        await connection.query(
-          'INSERT INTO status_history (ticket_id, user_id, old_status, new_status) VALUES (?, ?, ?, ?)',
-          [ticketId, senderId, currentStatus, newStatus]
-        );
-      }
+    if (!ticketId) return res.status(400).json({ success: false, message: 'Не указан ticketId.' });
+    if (!messageText && files.length === 0) {
+      return res.status(400).json({ success: false, message: 'Пустое сообщение.' });
     }
 
-    await connection.commit();
+    const senderId = req.session.userId;
+    const senderRole = req.session.userRole;
 
-    // 3. Эмиссия в сокеты: чтобы вложение появилось мгновенно
+    let connection;
     try {
-      const io = req.app.get('io');
-      if (io) {
-        const roomName = `ticket-${ticketId}`;
-        const [[senderRow]] = await pool.query('SELECT username, role FROM users WHERE id = ?', [senderId]);
-        const newMessage = {
-          id: messageId,
-          ticketId: parseInt(ticketId),
-          senderId,
-          senderUsername: senderRow?.username || null,
-          senderRole: senderRow?.role || null,
-          messageText: messageText || '',
-          attachmentUrl,
-          createdAt: new Date().toISOString()
-        };
-        io.to(roomName).emit('receiveMessage', newMessage);
-        if (newStatus) {
-          io.emit('ticketStatusUpdate', { ticketId: parseInt(ticketId), newStatus });
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      // 1) Сообщение
+      const [msgIns] = await connection.query(
+        'INSERT INTO messages (ticket_id, sender_id, message_text, attachment_url) VALUES (?, ?, ?, ?)',
+        [ticketId, senderId, messageText || '', null]
+      );
+      const messageId = msgIns.insertId;
+
+      // 2) Сохраняем все прикреплённые файлы
+      const attachments = [];
+      for (const f of files) {
+        const url = `/uploads/attachments/${f.filename}`;
+        await connection.query(
+          'INSERT INTO message_attachments (message_id, url, mime_type, size) VALUES (?, ?, ?, ?)',
+          [messageId, url, f.mimetype || null, f.size || null]
+        );
+        attachments.push({ url, mime_type: f.mimetype || null, size: f.size || null });
+      }
+
+      // 3) Автоперевод статуса при ответе модератора/админа
+      const [ticketRows] = await connection.query(
+        'SELECT status, moderator_id, user_id FROM tickets WHERE id = ?',
+        [ticketId]
+      );
+      if (!ticketRows.length) {
+        await connection.rollback();
+        return res.status(404).json({ success: false, message: 'Тикет не найден.' });
+      }
+      const currentStatus = ticketRows[0].status;
+      let moderatorId = ticketRows[0].moderator_id;
+      const ticketOwnerId = ticketRows[0].user_id;
+
+      let newStatus = null;
+      if (senderRole === 'moderator' || senderRole === 'admin') {
+        if (['New', 'Successful', 'Rejected'].includes(currentStatus)) {
+          newStatus = 'In Progress';
+          if (!moderatorId) moderatorId = senderId;
+          await connection.query(
+            'UPDATE tickets SET status = ?, moderator_id = ?, closed_at = NULL WHERE id = ?',
+            [newStatus, moderatorId, ticketId]
+          );
+          await connection.query(
+            'INSERT INTO status_history (ticket_id, user_id, old_status, new_status) VALUES (?, ?, ?, ?)',
+            [ticketId, senderId, currentStatus, newStatus]
+          );
         }
       }
-    } catch (emitErr) {
-      console.warn('Socket emit error (messages/send):', emitErr.message);
+
+      await connection.commit();
+
+      // Socket: сообщение в комнату тикета
+      try {
+        const io = req.app.get('io');
+        if (io) {
+          const roomName = `ticket-${ticketId}`;
+          const newMessage = {
+            senderId,
+            senderUsername: req.session.username,
+            senderRole,
+            messageText,
+            attachments,
+            attachmentUrl: null, // для совместимости
+            createdAt: new Date().toISOString(),
+            ticketId: Number(ticketId)
+          };
+          io.to(roomName).emit('receiveMessage', newMessage);
+
+          if (newStatus) {
+            io.emit('ticketStatusUpdate', { ticketId: Number(ticketId), newStatus });
+            io.to('moderators').emit('ticketsReload');
+          }
+        }
+      } catch (emitErr) {
+        console.warn('Socket emit error (messages/send):', emitErr.message);
+      }
+
+      // Push: адресно/модераторам
+      try {
+        const recipientId = senderRole === 'user' ? (ticketRows[0].moderator_id || null) : ticketRows[0].user_id;
+        if (recipientId) {
+          const isModerator = senderRole === 'moderator' || senderRole === 'admin';
+          const bodyText = isModerator
+            ? `Модератор ответил в тикет #${ticketId}.`
+            : `Новое сообщение от клиента${messageText ? `: "${(messageText||'').substring(0,30)}..."` : ''}`;
+          await sendPushToUserId(recipientId, {
+            title: `[ZERO] Новое сообщение`,
+            body: bodyText,
+            url: isModerator ? `/user.html` : `/moder.html`
+          });
+        } else if (senderRole === 'user') {
+          await sendPushToAllModerators({
+            title: `[ZERO] Новая активность`,
+            body: `Новое сообщение/вложение в тикете #${ticketId}`,
+            url: `/moder.html`
+          });
+        }
+      } catch {}
+
+      res.json({
+        success: true,
+        message: 'Сообщение принято и сохранено.',
+        socketData: {
+          ticketId: Number(ticketId),
+          messageText,
+          attachments,
+          senderId,
+          createdAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      if (connection) await connection.rollback();
+      console.error('Ошибка отправки сообщения из чата:', error);
+      res.status(500).json({ success: false, message: 'Ошибка сервера при сохранении сообщения.' });
+    } finally {
+      if (connection) connection.release();
     }
-
-    // 4. Push: получателю, либо всем модераторам (если не назначен)
-    try {
-      if (recipientId) {
-        const isModerator = senderRole === 'moderator' || senderRole === 'admin';
-        const bodyText = isModerator
-          ? `Модератор ответил в тикет #${ticketId}.`
-          : `Новое сообщение от клиента${messageText ? `: "${(messageText||'').substring(0,30)}..."` : ''}`;
-        await sendPushToUserId(recipientId, {
-          title: `[ZERO] Новое сообщение`,
-          body: bodyText,
-          url: isModerator ? `/user.html` : `/moder.html`
-        });
-      } else if (senderRole === 'user') {
-        await sendPushToAllModerators({
-          title: `[ZERO] Новая активность`,
-          body: `Новое сообщение/вложение в тикете #${ticketId}`,
-          url: `/moder.html`
-        });
-      }
-    } catch {}
-
-    res.json({
-      success: true,
-      message: 'Сообщение принято и сохранено.',
-      socketData: {
-        ticketId: parseInt(ticketId),
-        messageText,
-        attachmentUrl,
-        senderId,
-        createdAt: new Date().toISOString(),
-        newStatus,
-        recipientId
-      }
-    });
-  } catch (error) {
-    if (connection) await connection.rollback();
-    console.error('Ошибка отправки сообщения из чата:', error);
-    res.status(500).json({ success: false, message: 'Ошибка сервера при сохранении сообщения.' });
-  } finally {
-    if (connection) connection.release();
   }
-});
+);
 
 // ---------------------------------------------------
-// POST /api/tickets/update-status — ручная смена статуса
+// POST /api/tickets/update-status — смена статуса (с ограничениями ролей)
 // ---------------------------------------------------
 router.post('/update-status', isModeratorOrAdmin, async (req, res) => {
   const { ticketId, newStatus } = req.body;
-  const moderatorId = req.session.userId;
-  const validStatuses = ['New', 'In Progress', 'On Hold', 'Successful', 'Rejected'];
+  const actorId = req.session.userId;
+  const actorRole = req.session.userRole;
 
-  if (!ticketId || !newStatus || !validStatuses.includes(newStatus)) {
+  const validStatusesAll = ['New', 'In Progress', 'On Hold', 'Successful', 'Rejected'];
+  const allowedForModerator = ['In Progress', 'On Hold'];
+
+  if (!ticketId || !newStatus || !validStatusesAll.includes(newStatus)) {
     return res.status(400).json({ message: 'Неверные данные или статус.' });
+  }
+  if (actorRole === 'moderator' && !allowedForModerator.includes(newStatus)) {
+    return res.status(403).json({ message: 'Только администратор может завершать или отклонять тикеты.' });
   }
 
   let connection;
@@ -385,11 +440,18 @@ router.post('/update-status', isModeratorOrAdmin, async (req, res) => {
       'SELECT status, moderator_id, user_id, created_at FROM tickets WHERE id = ?',
       [ticketId]
     );
-    if (!currentTicket.length) return res.status(404).json({ message: 'Тикет не найден.' });
+    if (!currentTicket.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Тикет не найден.' });
+    }
 
     const oldStatus = currentTicket[0].status;
     let moderator_id = currentTicket[0].moderator_id;
-    if (oldStatus === 'New' && !moderator_id) moderator_id = moderatorId;
+    const ticketOwnerId = currentTicket[0].user_id;
+
+    if (actorRole === 'moderator' && oldStatus === 'New' && !moderator_id) {
+      moderator_id = actorId;
+    }
 
     let updateSQL = 'UPDATE tickets SET status = ?, moderator_id = ?';
     const params = [newStatus, moderator_id, ticketId];
@@ -399,62 +461,82 @@ router.post('/update-status', isModeratorOrAdmin, async (req, res) => {
       updateSQL += ', closed_at = NOW()';
       const startTime = new Date(currentTicket[0].created_at);
       const endTime = new Date();
-      const diffMs = endTime - startTime;
-      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      timeSpent = `${days}д ${hours}ч ${minutes}м`;
-    } else if (oldStatus === 'Successful' || oldStatus === 'Rejected') {
+      const diffMs = Math.max(0, endTime - startTime);
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      timeSpent = diffHours;
+    } else if (newStatus === 'In Progress') {
       updateSQL += ', closed_at = NULL';
     }
 
     updateSQL += ' WHERE id = ?';
-
     await connection.query(updateSQL, params);
+
     await connection.query(
       'INSERT INTO status_history (ticket_id, user_id, old_status, new_status) VALUES (?, ?, ?, ?)',
-      [ticketId, moderatorId, oldStatus, newStatus]
+      [ticketId, actorId, oldStatus, newStatus]
     );
 
     await connection.commit();
 
-    // Эмитим всем фронтам
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('ticketStatusUpdate', { ticketId: Number(ticketId), newStatus, timeSpent: timeSpent || null });
+      io.to('moderators').emit('ticketsReload');
+    }
+
     try {
-      const io = req.app.get('io');
-      if (io) io.emit('ticketStatusUpdate', { ticketId: parseInt(ticketId), newStatus, timeSpent });
+      await sendPushToUserId(ticketOwnerId, {
+        title: `[ZERO] Обновление статуса`,
+        body: `Статус вашего тикета #${ticketId} изменён на "${newStatus}"`,
+        url: `/user.html`
+      });
     } catch {}
 
-    res.json({
-      message: `Статус тикета #${ticketId} обновлен на "${newStatus}".`,
-      newStatus,
-      moderatorId: moderator_id,
-      timeSpent
-    });
+    res.json({ message: 'Статус обновлён.', timeSpent });
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('Ошибка обновления статуса тикета:', error);
-    res.status(500).json({ message: 'Ошибка сервера при обновлении статуса.' });
+    console.error('Ошибка смены статуса:', error);
+    res.status(500).json({ message: 'Ошибка сервера при смене статуса.' });
   } finally {
     if (connection) connection.release();
   }
 });
 
 // ---------------------------------------------------
-// POST /api/tickets/update-user-info — изменить ФИО/Телефон пользователя (модераторы)
+// POST /api/tickets/assign — назначить модератора (только admin)
 // ---------------------------------------------------
-router.post('/update-user-info', isModeratorOrAdmin, async (req, res) => {
-  const { userId, fullName, phoneNumber } = req.body;
-  if (!userId) return res.status(400).json({ message: 'Требуется ID пользователя.' });
+router.post('/assign', isAdmin, async (req, res) => {
+  const { ticketId, moderatorId } = req.body || {};
+  const tid = Number(ticketId);
+  const mid = Number(moderatorId);
+  if (!tid || !mid) {
+    return res.status(400).json({ message: 'Нужно указать ticketId и moderatorId.' });
+  }
 
   try {
-    await pool.query(
-      'UPDATE users SET full_name = ?, phone_number = ? WHERE id = ?',
-      [fullName || null, phoneNumber || null, userId]
+    const [mods] = await pool.query(
+      "SELECT id FROM users WHERE id = ? AND role = 'moderator'",
+      [mid]
     );
-    res.json({ message: `Данные пользователя ID ${userId} успешно обновлены.` });
-  } catch (error) {
-    console.error('Ошибка обновления данных пользователя:', error);
-    res.status(500).json({ message: 'Ошибка сервера при обновлении данных пользователя.' });
+    if (!mods.length) return res.status(400).json({ message: 'Пользователь не найден или не модератор.' });
+
+    const [tics] = await pool.query('SELECT id FROM tickets WHERE id = ?', [tid]);
+    if (!tics.length) return res.status(404).json({ message: 'Тикет не найден.' });
+
+    await pool.query('UPDATE tickets SET moderator_id = ? WHERE id = ?', [mid, tid]);
+
+    await pool.query(
+      'INSERT INTO status_history (ticket_id, user_id, old_status, new_status) VALUES (?, ?, ?, ?)',
+      [tid, req.session.userId, 'assign', 'assign']
+    );
+
+    const io = req.app.get('io');
+    if (io) io.to('moderators').emit('ticketsReload');
+
+    res.json({ message: 'Ответственный назначен.' });
+  } catch (e) {
+    console.error('Ошибка назначения модератора:', e);
+    res.status(500).json({ message: 'Ошибка сервера при назначении модератора.' });
   }
 });
 

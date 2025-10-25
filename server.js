@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const session = require('express-session');
 const cors = require('cors');
 const webPush = require('web-push');
+const path = require('path');
 require('dotenv').config();
 
 const { pool, initializeDB } = require('./db');
@@ -144,6 +145,7 @@ app.use(cors({
 
 // Парсинг тела запроса
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.urlencoded({ extended: true }));
 
 // Настройка Сессий
@@ -271,6 +273,10 @@ io.on('connection', (socket) => {
     socket.disconnect(true);
     return;
   }
+  // Вступаем модераторскими/админскими сокетами в комнату "moderators"
+if (role === 'moderator' || role === 'admin') {
+  socket.join('moderators');
+}
 
   console.log(`Клиент подключен (ID: ${userId}, Роль: ${role}). Socket ID: ${socket.id}`);
 

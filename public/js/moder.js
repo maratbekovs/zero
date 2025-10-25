@@ -1,11 +1,53 @@
-// Инициализируем после загрузки DOM
+// public/js/moder.js
+// Полная версия с поддержкой:
+// - Аватаров (в шапке чата у модератора видны ФИО/телефон/фото пользователя)
+// - Ограничений по ролям при смене статуса (moderator: только "In Progress"/"On Hold"; admin: любые)
+// - Принудительного назначения ответственного модератора (только admin)
+// - Рилтайм-появления новых тикетов/изменений через Socket.IO (ticketsReload)
+// - Мультивложений в сообщениях (attachments[])
+// - Интерактивов десктоп/моб.чата: меню вложений, предпросмотр, клики по "Фото/Видео/Файл"
+// - Раздела Users (список, создание, упрощённое редактирование)
+//
+// Важно: для мультивложений убедитесь, что в разметке input file имеют multiple:
+//   - Desktop:  <input type="file" id="chat-attachment" multiple accept="image/*,video/*" style="display:none;">
+//   - Mobile:   <input type="file" id="mchat-attachment" multiple accept="image/*,video/*" style="display:none;">
+
 document.addEventListener('DOMContentLoaded', () => {
   const API_BASE = '/api';
   const socket = io('/', { withCredentials: true });
 
-  // Регистрация сервис-воркера и автоподписка на push (если уже выдано разрешение)
+  // ===== Helpers =====
+  function byId(id){ return document.getElementById(id); }
+  function qs(sel, root=document){ return root.querySelector(sel); }
+  function qsa(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
+  function on(el, ev, fn){ if (el) el.addEventListener(ev, fn); }
+  function escapeHtml(str=''){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])); }
+  function formatDateSafe(d){ if (!d) return '—'; const dt = new Date(d); return isNaN(dt.getTime()) ? '—' : dt.toLocaleString(); }
+  function isMobile(){ return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; }
+  function setImg(el, url){ if (el) el.src = url || '/icons/user-placeholder.png'; }
+
+  // RU статусы
+  const statusMapRU = { 'New':'Новая','In Progress':'В работе','On Hold':'На согласовании','Successful':'Успешно','Rejected':'Отклонено' };
+  function statusToRu(s){ return statusMapRU[s] || (s || '—'); }
+
+  // ===== Push (тихое управление) =====
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+  }
+  async function fetchVapidPublicKey(){
+    try {
+      const r = await fetch(`${API_BASE}/auth/vapid-public-key`, { credentials:'include' });
+      const js = await r.json();
+      return js.publicKey;
+    } catch { return ''; }
+  }
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
   }
   (async function ensurePush() {
     try {
@@ -15,38 +57,31 @@ document.addEventListener('DOMContentLoaded', () => {
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
         const publicKey = await fetchVapidPublicKey();
+        if (!publicKey) return;
         const appServerKey = urlBase64ToUint8Array(publicKey);
         subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
       }
-      await fetch(`${API_BASE}/auth/save-subscription`, {
-        method: 'POST', headers: { 'Content-Type':'application/json' }, credentials:'include',
-        body: JSON.stringify({ subscription })
-      });
+      try {
+        await fetch(`${API_BASE}/auth/save-subscription`, { method:'POST', headers:{ 'Content-Type':'application/json' }, credentials:'include', body: JSON.stringify({ subscription }) });
+      } catch {}
     } catch {}
   })();
 
-  async function fetchVapidPublicKey(){
-    const res = await fetch(`${API_BASE}/auth/vapid-public-key`);
-    if (!res.ok) throw new Error('No VAPID public key');
-    const data = await res.json();
-    return data.publicKey;
-  }
-  function urlBase64ToUint8Array(base64String) {
-    if (!base64String) return new Uint8Array();
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-    return outputArray;
-  }
+  // ====== State ======
+  let me = null;
+  let allTickets = [];
+  let activeTicket = null;   // выбранный тикет
+  let usersCache = [];
+  let editingUserId = null;
 
-  // ------ DOM refs ------
+  // ===== DOM refs =====
+  // Header/Me
   const meUsernameEl = byId('me-username');
   const meRoleEl = byId('me-role');
   const profileUsername = byId('profile-username');
   const profileRole = byId('profile-role');
 
+  // Nav
   const navLinks = qsa('.nav a');
   const mobileTabs = qsa('.mobile-tab-bar .tab-item');
 
@@ -121,83 +156,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const editClose = byId('edit-user-close');
   const editCancel = byId('edit-user-cancel');
   const editSave = byId('edit-user-save');
-  const editMsg = byId('edit-user-message');
-  const editUsername = byId('edit-user-username');
+  const editMsg = byId('edit-user-msg');
   const editFullname = byId('edit-user-fullname');
   const editPhone = byId('edit-user-phone');
   const editRole = byId('edit-user-role');
 
-  // Reports
-  const btnMakeReport = byId('btn-make-report');
-  const btnPrint = byId('btn-print');
-  const startDate = byId('start_date');
-  const endDate = byId('end_date');
-  const reportSummary = byId('report-summary');
-  const reportTableBody = qs('#report-table tbody');
-  const reportMessage = byId('report-message');
-
-  // Profile
+  // Logout buttons
   const btnLogout = byId('btn-logout');
-  const btnLogout2 = byId('logout-2');
+  const btnLogout2 = byId('btn-logout-2');
 
-  // ------ State ------
-  let me = { userId: null, username: null, role: null };
-  let allTickets = [];
-  let activeTicket = null;
-  let usersCache = [];
-  let editingUserId = null;
+  // ===== Role-based helpers =====
+  function filterStatusOptions(){
+    if (!me || !me.role) return;
+    const only = ['In Progress','On Hold'];
+    [d?.statusSelect, m?.statusSelect].forEach(sel=>{
+      if (!sel) return;
+      Array.from(sel.options).forEach(opt=>{
+        if (me.role === 'moderator' && !only.includes(opt.value)) {
+          opt.disabled = true; opt.hidden = true;
+        }
+      });
+      if (me.role === 'moderator' && sel.value && !only.includes(sel.value)) sel.value = 'In Progress';
+    });
+  }
+  function canSetStatus(val){ return me?.role === 'moderator' ? ['In Progress','On Hold'].includes(val) : true; }
 
-  // ------ Helpers ------
-  function byId(id) { return document.getElementById(id); }
-  function qs(sel) { return document.querySelector(sel); }
-  function qsa(sel) { return Array.from(document.querySelectorAll(sel)); }
-  function on(el, ev, fn) { if (el) el.addEventListener(ev, fn); }
-  function isMobile() { return window.matchMedia('(max-width: 768px)').matches; }
-  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function formatDateSafe(d){
-    if (!d) return '—';
-    const dt = new Date(d);
-    return isNaN(dt.getTime()) ? '—' : dt.toLocaleString();
-  }
-  const statusMapRU = {
-    'New':'Новая',
-    'In Progress':'В работе',
-    'On Hold':'На согласовании',
-    'Successful':'Успешно',
-    'Rejected':'Отклонено'
-  };
-  function statusToRu(s){ return statusMapRU[s] || (s || '—'); }
-  function closeAttachMenu(){
-    if (m.attachMenu) {
-      m.attachMenu.classList.remove('open');
-      m.attachMenu.setAttribute('aria-hidden','true');
-    }
-  }
-  function showEditModal(){
-    if (!editModal) return;
-    editModal.style.display = 'flex';
-    editModal.setAttribute('aria-hidden','false');
-    setTimeout(()=> editFullname?.focus(), 0);
-    document.addEventListener('keydown', escCloseHandler);
-  }
-  function hideEditModal(){
-    if (!editModal) return;
-    editModal.style.display = 'none';
-    editModal.setAttribute('aria-hidden','true');
-    editMsg.textContent = '';
-    editingUserId = null;
-    document.removeEventListener('keydown', escCloseHandler);
-  }
-  function escCloseHandler(e){
-    if (e.key === 'Escape') hideEditModal();
-  }
-  function setBtnBusy(btn, busy){
-    if (!btn) return;
-    btn.disabled = !!busy;
-    if (btn.id === 'edit-user-save') btn.textContent = busy ? 'Сохранение...' : 'Сохранить';
-  }
-
-  // ------ Auth ------
+  // ===== Auth =====
   async function ensureModerator() {
     try{
       const res = await fetch(`${API_BASE}/auth/status`, { credentials:'include' });
@@ -209,12 +193,14 @@ document.addEventListener('DOMContentLoaded', () => {
       meRoleEl && (meRoleEl.textContent = `роль: ${data.role}`);
       profileUsername && (profileUsername.textContent = data.username);
       profileRole && (profileRole.textContent = data.role);
-    }catch(e){
-      location.href = '/';
-    }
+      filterStatusOptions();
+    }catch{ location.href = '/'; }
   }
 
-  // ------ Sections ------
+  // ===== Sections =====
+  function closeAttachMenu(){
+    if (m.attachMenu) { m.attachMenu.classList.remove('open'); m.attachMenu.setAttribute('aria-hidden','true'); }
+  }
   function activateSection(sec){
     navLinks.forEach(x=> x.classList.toggle('active', x.dataset.section===sec));
     qsa('.section').forEach(s=> s.classList.toggle('active', s.id === `sec-${sec}`));
@@ -225,15 +211,12 @@ document.addEventListener('DOMContentLoaded', () => {
   navLinks.forEach(a => on(a, 'click', e => { e.preventDefault(); activateSection(a.dataset.section); closeAttachMenu(); }));
   mobileTabs.forEach(t => on(t, 'click', e => { e.preventDefault(); activateSection(t.dataset.section); closeAttachMenu(); }));
 
-  // ------ Logout ------
-  async function doLogout(){
-    try { await fetch(`${API_BASE}/auth/logout`, { method:'POST', credentials:'include' }); }
-    finally { location.href = '/'; }
-  }
+  // ===== Logout =====
+  async function doLogout(){ try { await fetch(`${API_BASE}/auth/logout`, { method:'POST', credentials:'include' }); } finally { location.href = '/'; } }
   on(btnLogout, 'click', doLogout);
   on(btnLogout2, 'click', doLogout);
 
-  // ------ Tickets list ------
+  // ===== Tickets list =====
   on(btnReload, 'click', reloadTickets);
   on(searchInput, 'input', renderTickets);
   on(filterStatus, 'change', renderTickets);
@@ -276,12 +259,14 @@ document.addEventListener('DOMContentLoaded', () => {
         <td data-label="Действия">
           <div class="row">
             <button class="btn small" data-open data-id="${t.id}">Открыть чат</button>
+            ${me?.role === 'admin' ? `<button class="btn small" data-assign data-id="${t.id}">Назначить</button>` : ''}
           </div>
         </td>
       `;
       ticketsTableBody.appendChild(tr);
     }
 
+    // Handlers
     ticketsTableBody.querySelectorAll('[data-open]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const id = Number(btn.getAttribute('data-id'));
@@ -289,11 +274,38 @@ document.addEventListener('DOMContentLoaded', () => {
         if (t) openChat(t);
       });
     });
+    ticketsTableBody.querySelectorAll('[data-assign]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const ticketId = Number(btn.getAttribute('data-id'));
+        if (me?.role !== 'admin') return;
+        try{
+          const res = await fetch('/api/admin/moderators', { credentials:'include' });
+          const mods = res.ok ? await res.json() : [];
+          if (!mods.length) { alert('Нет доступных модераторов.'); return; }
+          const listing = mods.map(m => `${m.id}: ${m.full_name || m.username}`).join('\n');
+          const idStr = prompt(`Введите ID модератора для назначения:\n${listing}`);
+          const moderatorId = Number(idStr);
+          if (!moderatorId) return;
+
+          const r2 = await fetch('/api/tickets/assign', {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            credentials:'include',
+            body: JSON.stringify({ ticketId, moderatorId })
+          });
+          const data = await r2.json();
+          if (!r2.ok) throw new Error(data.message || 'Ошибка назначения');
+          alert('Ответственный назначен.');
+          await reloadTickets();
+        }catch(e){
+          alert(e.message || 'Ошибка назначения');
+        }
+      });
+    });
   }
 
-  // ------ Chat ------
+  // ===== Chat open =====
   function openChat(ticket){
-    // перейти из прошлой комнаты
     if (activeTicket && activeTicket.id && activeTicket.id !== ticket.id) {
       socket.emit('leaveTicket', activeTicket.id);
     }
@@ -302,12 +314,41 @@ document.addEventListener('DOMContentLoaded', () => {
     else openDesktopChat(ticket);
   }
 
+  async function decorateDesktopHeaderWithUserInfo(ticketId){
+    try{
+      const res = await fetch(`/api/auth/ticket-summary/${ticketId}`, { credentials:'include' });
+      const data = res.ok ? await res.json() : null;
+      const head = d.panel ? d.panel.querySelector('.chat-head') : null;
+      const left = head ? head.querySelector(':scope > div') : null;
+      if (!left) return;
+      let info = left.querySelector('#chat-user-info');
+      if (!info) {
+        info = document.createElement('div');
+        info.id = 'chat-user-info';
+        info.style.display = 'flex'; info.style.alignItems = 'center'; info.style.gap = '8px'; info.style.marginTop = '6px';
+        info.innerHTML = `
+          <img id="chat-user-avatar" class="avatar" alt="Пользователь" src="/icons/user-placeholder.png" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">
+          <span><strong id="chat-user-fullname">—</strong> · Тел.: <span id="chat-user-phone">—</span></span>
+        `;
+        left.appendChild(info);
+      }
+      const u = data && data.user ? data.user : null;
+      const img = left.querySelector('#chat-user-avatar');
+      const fn = left.querySelector('#chat-user-fullname');
+      const ph = left.querySelector('#chat-user-phone');
+      if (u) { if (img) img.src = u.avatar_url || '/icons/user-placeholder.png'; if (fn) fn.textContent = u.full_name || u.username || '—'; if (ph) ph.textContent = u.phone_number || '—'; }
+      else   { if (img) img.src = '/icons/user-placeholder.png'; if (fn) fn.textContent = '—'; if (ph) ph.textContent = '—'; }
+    } catch {}
+  }
+
   function openDesktopChat(t){
     if (!d.ticketId) return;
     d.ticketId.textContent = t.id;
     d.subject && (d.subject.textContent = t.subject || '');
     d.userId && (d.userId.textContent = t.user_id || '-');
     d.status && (d.status.textContent = statusToRu(t.status));
+
+    decorateDesktopHeaderWithUserInfo(t.id);
 
     const isClosed = ['Successful','Rejected'].includes(t.status);
     d.closedBanner && (d.closedBanner.style.display = isClosed ? '' : 'none');
@@ -324,12 +365,11 @@ document.addEventListener('DOMContentLoaded', () => {
     m.ticketId && (m.ticketId.textContent = t.id);
     m.subject && (m.subject.textContent = t.subject || '');
     m.status && (m.status.textContent = statusToRu(t.status));
-
     if (m.statusSelect){
       const allowed = ['In Progress','On Hold','Successful','Rejected'];
       m.statusSelect.value = allowed.includes(t.status) ? t.status : 'In Progress';
+      filterStatusOptions();
     }
-
     const isClosed = ['Successful','Rejected'].includes(t.status);
     m.closedBanner && (m.closedBanner.style.display = isClosed ? '' : 'none');
     m.actions && (m.actions.style.display = isClosed ? 'none' : 'flex');
@@ -355,207 +395,273 @@ document.addEventListener('DOMContentLoaded', () => {
     closeAttachMenu();
   }
 
+  // ===== Load/Render messages =====
   async function loadMessagesTo(ticketId, container, isMobileChat){
     if (!container) return;
     container.innerHTML = '';
     try{
       const res = await fetch(`${API_BASE}/tickets/${ticketId}/messages`, { credentials:'include' });
       const list = res.ok ? await res.json() : [];
-      for(const msg of list){
-        appendMessageTo(msg, container, isMobileChat);
-      }
+      for(const msg of list){ appendMessageTo(msg, container, isMobileChat); }
       container.scrollTop = container.scrollHeight;
     }catch(e){ console.warn(e); }
   }
 
+  function renderAttachments(arr){
+    const frag = document.createDocumentFragment();
+    for (const a of (arr||[])) {
+      const url = a.url;
+      const mime = (a.mime_type||'').toLowerCase();
+      const wrap = document.createElement('div');
+      wrap.className = 'attach';
+      if (mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(url)) {
+        const im = document.createElement('img'); im.src = url; im.alt = 'attach'; wrap.appendChild(im);
+      } else if (mime.startsWith('video/') || /\.(mp4|webm|ogg|mov)$/i.test(url)) {
+        const vd = document.createElement('video'); vd.src = url; vd.controls = true; wrap.appendChild(vd);
+      } else {
+        wrap.innerHTML = `<a href="${url}" target="_blank" rel="noopener">📎 Вложение</a>`;
+      }
+      frag.appendChild(wrap);
+    }
+    return frag;
+  }
+
   function appendMessageTo(mg, container, isMobileChat){
-    const isMe = mg.senderRole === 'moderator' || mg.senderRole === 'admin';
-    const el = document.createElement('div');
-    el.className = `${isMobileChat ? 'mmsg':'msg'} ${isMe ? 'me':'other'}`;
+    const self = Number(mg.senderId) === Number(me?.userId) || mg.senderRole === 'moderator' || mg.senderRole === 'admin';
+    const wrap = document.createElement('div');
+    wrap.className = `${isMobileChat ? 'mmsg':'msg'} ${self ? 'me':'other'}`;
 
-    let attach = '';
-    if (mg.attachmentUrl){
-      const url = mg.attachmentUrl;
-      const img = /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(url);
-      const vid = /\.(mp4|webm|ogg|mov)$/i.test(url);
-      if (img) attach = `<div class="attach"><img src="${url}" alt="attach"></div>`;
-      else if (vid) attach = `<div class="attach"><video src="${url}" controls></video></div>`;
-      else attach = `<div class="attach"><a href="${url}" target="_blank" rel="noopener">📎 Вложение</a></div>`;
+    if (!self) {
+      const img = document.createElement('img');
+      img.className = 'avatar avatar-sm';
+      img.alt = 'Фото';
+      img.src = mg.senderAvatarUrl || '/icons/user-placeholder.png';
+      img.style.width = '28px'; img.style.height = '28px'; img.style.borderRadius = '50%'; img.style.objectFit = 'cover';
+      wrap.appendChild(img);
     }
 
-    el.innerHTML = `
-      ${mg.messageText ? `<div>${escapeHtml(mg.messageText)}</div>`:''}
-      ${attach}
-      <div class="meta">${escapeHtml(mg.senderUsername || mg.senderRole || '')} • ${formatDateSafe(mg.createdAt)}</div>
-    `;
-    container.appendChild(el);
-  }
-
-  // Обновление статуса
-  on(d.updateStatusBtn, 'click', async ()=>{
-    if (!activeTicket) return;
-    const newStatus = d.statusSelect?.value || 'In Progress';
-    await updateStatusCommon(newStatus, false);
-  });
-  on(m.updateStatusBtn, 'click', async ()=>{
-    if (!activeTicket) return;
-    const newStatus = m.statusSelect?.value || 'In Progress';
-    await updateStatusCommon(newStatus, true);
-  });
-
-  async function updateStatusCommon(newStatus, isMobileUI){
-    try{
-      const res = await fetch(`${API_BASE}/tickets/update-status`, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        credentials:'include',
-        body: JSON.stringify({ ticketId: activeTicket.id, newStatus })
-      });
-      const data = res.ok ? await res.json() : { message: await res.text() };
-      if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
-
-      if (isMobileUI){
-        m.status && (m.status.textContent = statusToRu(data.newStatus || newStatus));
-        if (data.timeSpent && m.timeSpent){
-          m.timeSpent.style.display = '';
-          m.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
-        }
-        const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
-        m.closedBanner && (m.closedBanner.style.display = closed ? '' : 'none');
-        m.actions && (m.actions.style.display = closed ? 'none' : 'flex');
-      }else{
-        d.status && (d.status.textContent = statusToRu(data.newStatus || newStatus));
-        if (data.timeSpent && d.timeSpent){
-          d.timeSpent.style.display = '';
-          d.timeSpent.textContent = `Время в работе: ${data.timeSpent}`;
-        }
-        const closed = ['Successful','Rejected'].includes(data.newStatus || newStatus);
-        d.closedBanner && (d.closedBanner.style.display = closed ? '' : 'none');
-        d.actions && (d.actions.style.display = closed ? 'none' : 'flex');
-      }
-
-      await reloadTickets();
-      const found = allTickets.find(x=>x.id===activeTicket.id);
-      if (found) activeTicket = found;
-    }catch(e){
-      alert(e.message || 'Ошибка обновления статуса');
+    if (mg.messageText) {
+      const text = document.createElement('div');
+      text.innerHTML = escapeHtml(mg.messageText);
+      wrap.appendChild(text);
     }
-  }
 
-  // Desktop send
-  on(d.btnPick, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='image/*,video/*'; d.file.removeAttribute('capture'); d.file.click(); });
-  on(d.btnPhoto, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='image/*'; d.file.setAttribute('capture','environment'); d.file.click(); });
-  on(d.btnVideo, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='video/*'; d.file.setAttribute('capture','environment'); d.file.click(); });
-  on(d.btnClearPreview, 'click', ()=>{ if (!d.file || !d.preview || !d.previewThumb) return; d.file.value=''; d.previewThumb.innerHTML=''; d.preview.classList.remove('show'); });
-  on(d.file, 'change', ()=> handlePreview(d.file, d.preview, d.previewThumb));
-  on(d.btnSend, 'click', ()=> sendMessage(false));
-  on(d.input, 'keydown', (e)=>{ if (d.actions?.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(false); }});
-
-  // Mobile send + меню вложений
-  on(m.attachToggle, 'click', (e)=>{
-    e.stopPropagation();
-    if (!m.attachMenu) return;
-    const opened = m.attachMenu.classList.toggle('open');
-    m.attachMenu.setAttribute('aria-hidden', opened ? 'false':'true');
-  });
-  document.addEventListener('click', (e)=>{
-    if (!isMobile()) return;
-    if (!m.attachMenu) return;
-    const clickedInsideMenu = m.attachMenu.contains(e.target);
-    const clickedToggle = m.attachToggle && m.attachToggle.contains(e.target);
-    if (!clickedInsideMenu && !clickedToggle) closeAttachMenu();
-  });
-
-  on(d.btnPick, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='image/*,video/*'; d.file.removeAttribute('capture'); d.file.click(); });
-  on(d.btnPhoto, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='image/*'; d.file.setAttribute('capture','environment'); d.file.click(); });
-  on(d.btnVideo, 'click', ()=>{ if (d.actions?.style.display==='none') return; if (!d.file) return; d.file.accept='video/*'; d.file.setAttribute('capture','environment'); d.file.click(); });  on(m.btnClearPreview, 'click', ()=>{ if (!m.file || !m.preview || !m.previewThumb) return; m.file.value=''; m.previewThumb.innerHTML=''; m.preview.classList.remove('show'); });
-  on(m.file, 'change', ()=> handlePreview(m.file, m.preview, m.previewThumb));
-  on(m.btnSend, 'click', ()=> { closeAttachMenu(); sendMessage(true); });
-  on(m.input, 'keydown', (e)=>{ if (m.actions?.style.display==='none') return; if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); closeAttachMenu(); sendMessage(true); }});
-
-  function handlePreview(fileInput, wrap, thumb){
-    const f = fileInput?.files?.[0];
-    if (!wrap || !thumb) return;
-    thumb.innerHTML = '';
-    if (!f){ wrap.classList.remove('show'); return; }
-    const isImg = (f.type||'').startsWith('image/');
-    const isVid = (f.type||'').startsWith('video/');
-    if (isImg){
-      const img = new Image(); img.src = URL.createObjectURL(f); img.onload = ()=> URL.revokeObjectURL(img.src);
-      img.style.maxHeight = '100px'; img.style.borderRadius='6px'; thumb.appendChild(img);
-    }else if (isVid){
-      const v = document.createElement('video'); v.src = URL.createObjectURL(f); v.controls = true; v.style.maxHeight='100px'; v.style.borderRadius='6px';
-      v.onloadeddata = ()=> URL.revokeObjectURL(v.src); thumb.appendChild(v);
-    }else{
-      thumb.textContent = f.name;
+    // Мультивложения либо fallback одиночного
+    if (Array.isArray(mg.attachments) && mg.attachments.length) {
+      wrap.appendChild(renderAttachments(mg.attachments));
+    } else if (mg.attachmentUrl) {
+      wrap.appendChild(renderAttachments([{ url: mg.attachmentUrl, mime_type: '', size: null }]));
     }
-    wrap.classList.add('show');
-    fileInput.accept='image/*,video/*'; fileInput.setAttribute('capture','environment');
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${mg.senderUsername || mg.senderRole || ''} • ${formatDateSafe(mg.createdAt)}`;
+    wrap.appendChild(meta);
+
+    container.appendChild(wrap);
   }
 
-  async function sendMessage(isMobileUI){
-    if (!activeTicket) return;
-    const ui = isMobileUI ? m : d;
-    if (ui.actions?.style.display==='none') return;
-
-    const text = ui.input?.value.trim();
-    const file = ui.file?.files?.[0] || null;
-    if (!text && !file) return;
-
-    try{
-      if (file){
-        // вложения — через HTTP; сервер эмитит receiveMessage
-        const fd = new FormData();
-        fd.set('ticketId', String(activeTicket.id));
-        if (text) fd.set('messageText', text);
-        fd.set('attachment', file);
-        const res = await fetch(`${API_BASE}/tickets/messages/send`, { method:'POST', body: fd, credentials:'include' });
-        const ok = res.ok;
-        const data = ok ? await res.json() : { message: await res.text() };
-        if (!ok) throw new Error(data.message || `Ошибка (${res.status})`);
-      }else{
-        // текст — мгновенно через сокеты
-        socket.emit('sendMessage', { ticketId: activeTicket.id, messageText: text });
-      }
-
-      ui.input && (ui.input.value = '');
-      ui.file && (ui.file.value = '');
-      ui.previewThumb && (ui.previewThumb.innerHTML = '');
-      ui.preview && ui.preview.classList.remove('show');
-
-    }catch(e){ alert(e.message || 'Ошибка отправки сообщения'); }
-  }
-
-  // Сокеты
-  socket.on('receiveMessage', (payload)=>{
-    if (!activeTicket || Number(payload?.ticketId) !== Number(activeTicket.id)) return;
-    if (m.modal && m.modal.style.display === 'block'){
-      appendMessageTo(payload, m.box, true);
-      m.box && (m.box.scrollTop = m.box.scrollHeight);
-    } else {
-      appendMessageTo(payload, d.box, false);
-      d.box && (d.box.scrollTop = d.box.scrollHeight);
-    }
-  });
-
-  socket.on('ticketStatusUpdate', ({ ticketId, newStatus, timeSpent }) => {
-    // обновим таблицу и статус в чате
-    reloadTickets();
-    if (activeTicket && Number(activeTicket.id) === Number(ticketId)) {
+  // ===== Socket realtime =====
+  socket.on('ticketsReload', () => { reloadTickets(); });
+  socket.on('ticketStatusUpdate', ({ ticketId, newStatus }) => {
+    const t = allTickets.find(x => Number(x.id) === Number(ticketId));
+    if (t) t.status = newStatus;
+    renderTickets();
+    if (activeTicket?.id && Number(activeTicket.id) === Number(ticketId)) {
       d.status && (d.status.textContent = statusToRu(newStatus));
       m.status && (m.status.textContent = statusToRu(newStatus));
-      const closed = ['Successful','Rejected'].includes(newStatus);
-      d.closedBanner && (d.closedBanner.style.display = closed ? '' : 'none');
-      d.actions && (d.actions.style.display = closed ? 'none' : 'flex');
-      m.closedBanner && (m.closedBanner.style.display = closed ? '' : 'none');
-      m.actions && (m.actions.style.display = closed ? 'none' : 'flex');
-      if (timeSpent && d.timeSpent) { d.timeSpent.style.display=''; d.timeSpent.textContent=`Время в работе: ${timeSpent}`; }
-      if (timeSpent && m.timeSpent) { m.timeSpent.style.display=''; m.timeSpent.textContent=`Время в работе: ${timeSpent}`; }
-      activeTicket.status = newStatus;
+    }
+  });
+  socket.on('receiveMessage', (newMessage) => {
+    if (activeTicket?.id && Number(activeTicket.id) === Number(newMessage.ticketId)) {
+      appendMessageTo(newMessage, isMobile() ? m.box : d.box, isMobile());
+      const box = isMobile() ? m.box : d.box;
+      if (box) box.scrollTop = box.scrollHeight;
     }
   });
 
-  // ------ Users ------
+  // ===== Update status =====
+  async function doUpdateStatus(ticketId, nextStatus, isMobileUI=false){
+    if (!canSetStatus(nextStatus)) { alert('Только админ может завершать или отклонять тикеты.'); return; }
+    try{
+      const res = await fetch(`${API_BASE}/tickets/update-status`, {
+        method:'POST', headers:{ 'Content-Type':'application/json' }, credentials:'include',
+        body: JSON.stringify({ ticketId, newStatus: nextStatus })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Ошибка обновления статуса');
+
+      if (!isMobileUI) {
+        d.status && (d.status.textContent = statusToRu(nextStatus));
+        const isClosed = ['Successful','Rejected'].includes(nextStatus);
+        d.closedBanner && (d.closedBanner.style.display = isClosed ? '' : 'none');
+        d.actions && (d.actions.style.display = isClosed ? 'none' : 'flex');
+      } else {
+        m.status && (m.status.textContent = statusToRu(nextStatus));
+        const isClosed = ['Successful','Rejected'].includes(nextStatus);
+        m.closedBanner && (m.closedBanner.style.display = isClosed ? '' : 'none');
+        m.actions && (m.actions.style.display = isClosed ? 'none' : 'flex');
+      }
+
+      reloadTickets();
+    }catch(e){ alert(e.message || 'Ошибка обновления статуса'); }
+  }
+  on(d.updateStatusBtn, 'click', async ()=>{ if (!activeTicket?.id) return; const next = d.statusSelect?.value; await doUpdateStatus(activeTicket.id, next, false); });
+  on(m.updateStatusBtn, 'click', async ()=>{ if (!activeTicket?.id) return; const next = m.statusSelect?.value; await doUpdateStatus(activeTicket.id, next, true); });
+
+  // ===== Send message (мультивложения) =====
+  async function sendMessage(ticketId, text, fileInput, isMobileUI=false){
+    if (!ticketId) return;
+    const hasText = text && text.trim().length > 0;
+    const files = Array.from(fileInput?.files || []);
+    if (!hasText && files.length === 0) return;
+
+    try{
+      const form = new FormData();
+      form.append('ticketId', ticketId);
+      if (hasText) form.append('messageText', text.trim());
+      files.forEach(f => form.append('attachments', f));
+
+      const res = await fetch(`${API_BASE}/tickets/messages/send`, { method:'POST', credentials:'include', body: form });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Ошибка отправки');
+
+      const msg = {
+        senderId: me?.userId,
+        senderUsername: me?.username,
+        senderRole: me?.role,
+        messageText: text || '',
+        attachments: data.socketData?.attachments || [],
+        attachmentUrl: null,
+        createdAt: new Date().toISOString(),
+        ticketId
+      };
+      appendMessageTo(msg, isMobileUI ? m.box : d.box, isMobileUI);
+      const box = isMobileUI ? m.box : d.box;
+      if (box) box.scrollTop = box.scrollHeight;
+
+      // Очистка интерфейса и предпросмотра
+      if (!isMobileUI){
+        d.input && (d.input.value = '');
+        if (d.file) d.file.value = '';
+        if (d.previewThumb) d.previewThumb.innerHTML = '';
+        d.preview && d.preview.classList.remove('show');
+      } else {
+        m.input && (m.input.value = '');
+        if (m.file) m.file.value = '';
+        if (m.previewThumb) m.previewThumb.innerHTML = '';
+        m.preview && m.preview.classList.remove('show');
+      }
+    }catch(e){ alert(e.message || 'Ошибка отправки'); }
+  }
+
+  on(d.btnSend, 'click', ()=> sendMessage(activeTicket?.id, d.input?.value || '', d.file, false));
+  on(m.btnSend, 'click', ()=> sendMessage(activeTicket?.id, m.input?.value || '', m.file, true));
+  on(d.input, 'keydown', (e)=>{ if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(activeTicket?.id, d.input?.value||'', d.file, false); }});
+  on(m.input, 'keydown', (e)=>{ if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(activeTicket?.id, m.input?.value||'', m.file, true); }});
+
+  // ===== Attachments UI (Desktop) =====
+  on(d.btnPick, 'click', ()=>{
+    if (!d.file) return;
+    d.file.accept = 'image/*,video/*';
+    d.file.multiple = true;
+    d.file.click();
+  });
+  on(d.btnPhoto, 'click', ()=>{
+    if (!d.file) return;
+    d.file.accept = 'image/*';
+    d.file.multiple = true;
+    d.file.click();
+  });
+  on(d.btnVideo, 'click', ()=>{
+    if (!d.file) return;
+    d.file.accept = 'video/*';
+    d.file.multiple = true;
+    d.file.click();
+  });
+
+  // ===== Attachments UI (Mobile) =====
+  on(m.attachToggle, 'click', ()=>{
+    if (!m.attachMenu) return;
+    const isOpen = m.attachMenu.classList.contains('open');
+    m.attachMenu.classList.toggle('open', !isOpen);
+    m.attachMenu.setAttribute('aria-hidden', isOpen ? 'true' : 'false');
+  });
+  on(m.btnPick, 'click', ()=>{
+    if (!m.file) return;
+    m.file.accept = 'image/*,video/*';
+    m.file.multiple = true;
+    m.file.click();
+    closeAttachMenu();
+  });
+  on(m.btnPhoto, 'click', ()=>{
+    if (!m.file) return;
+    m.file.accept = 'image/*';
+    m.file.multiple = true;
+    m.file.click();
+    closeAttachMenu();
+  });
+  on(m.btnVideo, 'click', ()=>{
+    if (!m.file) return;
+    m.file.accept = 'video/*';
+    m.file.multiple = true;
+    m.file.click();
+    closeAttachMenu();
+  });
+
+  // ===== Preview helpers =====
+  function renderPreviewFiles(fileList, isMobileUI=false){
+    const thumb = isMobileUI ? m.previewThumb : d.previewThumb;
+    const wrap = isMobileUI ? m.preview : d.preview;
+    if (!thumb || !wrap) return;
+    thumb.innerHTML = '';
+    const files = Array.from(fileList || []);
+    if (files.length === 0) { wrap.classList.remove('show'); return; }
+
+    const frag = document.createDocumentFragment();
+    files.slice(0, 6).forEach(f=>{
+      const url = URL.createObjectURL(f);
+      const img = /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(f.name);
+      const vid = /\.(mp4|webm|ogg|mov)$/i.test(f.name);
+      const item = document.createElement('div');
+      item.style.display='inline-block';
+      item.style.marginRight='8px';
+      item.style.marginBottom='8px';
+      if (img){
+        item.innerHTML = `<img src="${url}" alt="preview" style="max-width:140px;max-height:110px;border-radius:8px;">`;
+      } else if (vid){
+        item.innerHTML = `<video src="${url}" controls style="max-width:160px;max-height:110px;border-radius:8px;"></video>`;
+      } else {
+        item.textContent = f.name;
+      }
+      frag.appendChild(item);
+    });
+    thumb.appendChild(frag);
+
+    if (files.length > 6) {
+      const more = document.createElement('div');
+      more.className = 'muted';
+      more.textContent = `+ ещё ${files.length - 6} файл(ов)`;
+      thumb.appendChild(more);
+    }
+    wrap.classList.add('show');
+  }
+
+  on(d.file, 'change', ()=> renderPreviewFiles(d.file.files, false));
+  on(m.file, 'change', ()=> renderPreviewFiles(m.file.files, true));
+
+  on(d.btnClearPreview, 'click', ()=>{
+    if (d.file) d.file.value='';
+    if (d.previewThumb) d.previewThumb.innerHTML='';
+    d.preview && d.preview.classList.remove('show');
+  });
+  on(m.btnClearPreview, 'click', ()=>{
+    if (m.file) m.file.value='';
+    if (m.previewThumb) m.previewThumb.innerHTML='';
+    m.preview && m.preview.classList.remove('show');
+  });
+
+  // ===== Users =====
   on(btnReloadUsers, 'click', loadUsers);
 
   async function loadUsers(){
@@ -595,131 +701,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  on(btnCreateUser, 'click', async ()=>{
-    if (!createUserMsg) return;
-    createUserMsg.textContent = '';
-    try{
-      const payload = {
-        username: byId('new-username')?.value.trim(),
-        password: byId('new-password')?.value,
-        role: byId('new-role')?.value,
-        full_name: byId('new-fullname')?.value?.trim() || null,
-        phone_number: byId('new-phone')?.value?.trim() || null
-      };
-      const res = await fetch(`${API_BASE}/admin/create-user`, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        credentials:'include',
-        body: JSON.stringify(payload)
-      });
-      const data = res.ok ? await res.json() : { message: await res.text() };
-      if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
-      createUserMsg.textContent = data.message || 'Создано';
-      await loadUsers();
-    }catch(e){
-      createUserMsg.textContent = e.message || 'Ошибка создания';
-    }
-  });
+  function showEditModal(){ if (!editModal) return; editModal.style.display='flex'; editModal.setAttribute('aria-hidden','false'); setTimeout(()=> editFullname?.focus(), 0); document.addEventListener('keydown', escCloseHandler); }
+  function hideEditModal(){ if (!editModal) return; editModal.style.display='none'; editModal.setAttribute('aria-hidden','true'); editMsg && (editMsg.textContent=''); editingUserId=null; document.removeEventListener('keydown', escCloseHandler); }
+  function escCloseHandler(e){ if (e.key==='Escape') hideEditModal(); }
+  on(editClose, 'click', hideEditModal);
+  on(editCancel, 'click', hideEditModal);
 
-  // Edit user
   function openEditUser(userId){
     const u = usersCache.find(x => Number(x.id) === Number(userId));
     if (!u) { alert('Пользователь не найден'); return; }
     editingUserId = u.id;
     editTitle && (editTitle.textContent = `Редактирование пользователя #${u.id}`);
-    editUsername && (editUsername.value = u.username || '');
-    editFullname && (editFullname.value = u.full_name || '');
-    editPhone && (editPhone.value = u.phone_number || '');
-    editRole && (editRole.value = u.role || '');
-    editMsg && (editMsg.textContent = '');
+    if (editFullname) editFullname.value = u.full_name || '';
+    if (editPhone) editPhone.value = u.phone_number || '';
+    if (editRole) editRole.value = u.role || 'user';
     showEditModal();
   }
-  async function saveEditUser(){
+  on(editSave, 'click', async ()=>{
     if (!editingUserId) return;
-    const fullName = (editFullname?.value || '').trim();
-    const phoneNumber = (editPhone?.value || '').trim();
     try{
-      setBtnBusy(editSave, true);
-      editMsg.style.color = '#718096';
-      editMsg.textContent = 'Сохраняем...';
-      const res = await fetch(`${API_BASE}/tickets/update-user-info`, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        credentials:'include',
-        body: JSON.stringify({ userId: editingUserId, fullName, phoneNumber })
+      const payload = {
+        id: editingUserId,
+        full_name: editFullname?.value?.trim() || null,
+        phone_number: editPhone?.value?.trim() || null,
+        role: editRole?.value || null
+      };
+      const res = await fetch(`${API_BASE}/admin/update-user`, {
+        method:'POST', headers:{ 'Content-Type':'application/json' }, credentials:'include',
+        body: JSON.stringify(payload)
       });
-      const data = res.ok ? await res.json() : { message: await res.text() };
-      if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
-
-      editMsg.style.color = '#2a9d8f';
-      editMsg.textContent = data.message || 'Данные обновлены';
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Ошибка сохранения');
+      hideEditModal();
       await loadUsers();
-      const idx = usersCache.findIndex(x => x.id === editingUserId);
-      if (idx >= 0) {
-        usersCache[idx].full_name = fullName;
-        usersCache[idx].phone_number = phoneNumber;
-      }
-      setTimeout(hideEditModal, 600);
-    }catch(e){
-      editMsg.style.color = '#e63946';
-      editMsg.textContent = e.message || 'Ошибка сохранения';
-    }finally{
-      setBtnBusy(editSave, false);
-    }
-  }
-  on(editClose, 'click', hideEditModal);
-  on(editCancel, 'click', hideEditModal);
-  on(editSave, 'click', saveEditUser);
-  on(editModal, 'click', (e)=>{ if (e.target === editModal) hideEditModal(); });
-
-  // Reports
-  on(btnMakeReport, 'click', async ()=>{
-    if (!reportTableBody || !reportSummary || !reportMessage) return;
-
-    reportTableBody.innerHTML = '';
-    reportSummary.innerHTML = '<div class="muted">Готовим отчёт...</div>';
-    reportMessage.textContent = '';
-    btnPrint && (btnPrint.disabled = true);
-
-    const qsParams = new URLSearchParams({ startDate: startDate?.value, endDate: endDate?.value }).toString();
-    try{
-      const res = await fetch(`${API_BASE}/admin/report?${qsParams}`, { credentials:'include' });
-      const data = res.ok ? await res.json() : [];
-
-      const total = data.length;
-      const successful = data.filter(x=>x.status==='Successful').length;
-      const rejected = data.filter(x=>x.status==='Rejected').length;
-      reportSummary.innerHTML = `
-        <div class="chips">
-          <span class="chip">Всего закрыто: ${total}</span>
-          <span class="chip">Успешно: ${successful}</span>
-          <span class="chip">Отклонено: ${rejected}</span>
-        </div>
-      `;
-      for(const r of data){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td data-label="ID">${r.ticket_id}</td>
-          <td data-label="Тема">${escapeHtml(r.subject || '')}</td>
-          <td data-label="Статус">${escapeHtml(statusToRu(r.status || ''))}</td>
-          <td data-label="Пользователь">${escapeHtml(r.client_username || '')}</td>
-          <td data-label="Модератор" class="col-moderator">${escapeHtml(r.moderator_username || '')}</td>
-          <td data-label="Создан">${formatDateSafe(r.created_at)}</td>
-          <td data-label="Закрыт" class="col-closed">${formatDateSafe(r.closed_at)}</td>
-        `;
-        reportTableBody.appendChild(tr);
-      }
-      reportMessage.textContent = total ? '' : 'За период нет закрытых тикетов';
-      btnPrint && (btnPrint.disabled = !total);
-    }catch(e){
-      reportSummary.innerHTML = '';
-      reportMessage.textContent = 'Ошибка формирования отчёта';
-    }
+    }catch(e){ if (editMsg) editMsg.textContent = e.message || 'Ошибка'; }
   });
 
-  // ------ Init ------
+  // ===== Bootstrap =====
   (async function init(){
     await ensureModerator();
     await reloadTickets();
+    activateSection('tickets');
   })();
+
+  // На всякий случай: покидаем комнату при выгрузке
+  window.addEventListener('beforeunload', ()=> {
+    if (activeTicket?.id) socket.emit('leaveTicket', activeTicket.id);
+  });
 });

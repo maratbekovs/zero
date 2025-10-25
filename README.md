@@ -77,3 +77,19 @@
 ---
 
 > _“Make it work, make it right, make it fast.”_ — **Kent Beck**
+
+<!-- В продакшн
+ALTER TABLE users
+  ADD COLUMN avatar_url VARCHAR(255) NULL AFTER phone_number; 
+  
+  CREATE TABLE IF NOT EXISTS message_attachments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  message_id INT NOT NULL,
+  url VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(100) NULL,
+  size INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+-->

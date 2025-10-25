@@ -1,9 +1,10 @@
 // db.js
+//
+// Добавлена таблица message_attachments + безопасный ALTER на случай уже существующей БД.
 
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-// Конфигурация подключения берется из .env
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
@@ -16,16 +17,12 @@ const pool = mysql.createPool({
     multipleStatements: true 
 });
 
-/**
- * Функция для проверки подключения к БД и инициализации таблиц.
- */
 async function initializeDB() {
     console.log("Попытка подключения к MySQL...");
     try {
         await pool.getConnection();
         console.log("✅ Успешное подключение к MySQL.");
 
-        // SQL для создания таблиц
         const createTablesSQL = `
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -33,8 +30,8 @@ async function initializeDB() {
                 password_hash VARCHAR(255) NOT NULL,
                 full_name VARCHAR(100) NULL,
                 phone_number VARCHAR(20) NULL,
+                avatar_url VARCHAR(255) NULL,
                 role ENUM('user', 'moderator', 'admin') NOT NULL DEFAULT 'user',
-                -- !!! ИСПРАВЛЕНИЕ: Добавляем столбец created_at
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -55,13 +52,12 @@ async function initializeDB() {
                 ticket_id INT NOT NULL,
                 sender_id INT NOT NULL,
                 message_text TEXT NOT NULL,
-                attachment_url VARCHAR(255) NULL,
+                attachment_url VARCHAR(255) NULL, -- оставлено для совместимости (не используется для множества)
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (ticket_id) REFERENCES tickets(id),
                 FOREIGN KEY (sender_id) REFERENCES users(id)
             );
 
-            -- Дополнительная таблица для логов (для отчетов и истории)
             CREATE TABLE IF NOT EXISTS status_history (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 ticket_id INT NOT NULL,
@@ -73,21 +69,59 @@ async function initializeDB() {
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
 
+            -- Таблица для мультивложений сообщений
+            CREATE TABLE IF NOT EXISTS message_attachments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                url VARCHAR(255) NOT NULL,
+                mime_type VARCHAR(100) NULL,
+                size INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            );
+
+            -- Дублированное создание users (как у вас в исходнике) — дополнено avatar_url и push_subscription
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(50) NOT NULL UNIQUE,
                 password_hash VARCHAR(255) NOT NULL,
                 full_name VARCHAR(100) NULL,
                 phone_number VARCHAR(20) NULL,
+                avatar_url VARCHAR(255) NULL,
                 role ENUM('user', 'moderator', 'admin') NOT NULL DEFAULT 'user',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                push_subscription JSON NULL  -- !!! НОВОЕ: Столбец для хранения Push-подписки
+                push_subscription JSON NULL
             );
         `;
 
         await pool.query(createTablesSQL);
-        console.log("✅ Таблицы успешно созданы или уже существуют.");
 
+        // Безопасные ALTER'ы на случай старых БД
+        try {
+          await pool.query("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255) NULL AFTER phone_number");
+        } catch (e) {
+          if (e && e.code !== 'ER_DUP_FIELDNAME' && !String(e.message||'').includes('Duplicate')) {
+            console.warn('ALTER users ADD avatar_url failed:', e.message);
+          }
+        }
+
+        try {
+          await pool.query(`
+            CREATE TABLE IF NOT EXISTS message_attachments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                url VARCHAR(255) NOT NULL,
+                mime_type VARCHAR(100) NULL,
+                size INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+            )
+          `);
+        } catch (e) {
+          console.warn('CREATE message_attachments failed:', e.message);
+        }
+
+        console.log("✅ Таблицы успешно созданы или уже существуют.");
     } catch (error) {
         console.error("❌ Ошибка при работе с базой данных:", error.message);
     }

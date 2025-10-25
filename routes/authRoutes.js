@@ -5,11 +5,15 @@ const router = express.Router();
 const { pool } = require('../db');
 const { hashPassword, comparePassword } = require('../utils/auth');
 
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
 /**
  * Проверяет, авторизован ли пользователь.
  */
 function isAuthenticated(req, res, next) {
-  if (req.session.userId) return next();
+  if (req.session?.userId) return next();
   return res.status(401).json({ message: 'Требуется авторизация.' });
 }
 
@@ -17,7 +21,7 @@ function isAuthenticated(req, res, next) {
  * Проверяет, является ли пользователь модератором или администратором.
  */
 function isModeratorOrAdmin(req, res, next) {
-  if (req.session.userId && (req.session.userRole === 'moderator' || req.session.userRole === 'admin')) {
+  if (req.session?.userId && (req.session.userRole === 'moderator' || req.session.userRole === 'admin')) {
     return next();
   }
   return res.status(403).json({ message: 'Доступ запрещен. Требуется роль модератора/администратора.' });
@@ -27,13 +31,12 @@ function isModeratorOrAdmin(req, res, next) {
  * Проверяет, является ли пользователь администратором.
  */
 function isAdmin(req, res, next) {
-  if (req.session.userId && req.session.userRole === 'admin') return next();
+  if (req.session?.userId && req.session.userRole === 'admin') return next();
   return res.status(403).json({ message: 'Доступ запрещен. Требуется роль администратора.' });
 }
 
 // ---------------------------------------------------
-// POST /api/auth/register-admin
-// Регистрация первого администратора (если ещё не создан)
+// POST /api/auth/register-admin — регистрация первого администратора
 // ---------------------------------------------------
 router.post('/register-admin', async (req, res) => {
   const { username, password } = req.body;
@@ -59,8 +62,7 @@ router.post('/register-admin', async (req, res) => {
 });
 
 // ---------------------------------------------------
-// POST /api/auth/login
-// Логин и установка сессии
+// POST /api/auth/login — логин
 // ---------------------------------------------------
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -69,7 +71,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const [users] = await pool.query(
-      'SELECT id, password_hash, role, full_name, phone_number FROM users WHERE username = ?',
+      'SELECT id, password_hash, role, full_name, phone_number, avatar_url FROM users WHERE username = ?',
       [username]
     );
     if (users.length === 0) return res.status(401).json({ message: 'Неверное имя пользователя или пароль.' });
@@ -85,7 +87,7 @@ router.post('/login', async (req, res) => {
     }
     if (!isMatch) return res.status(401).json({ message: 'Неверное имя пользователя или пароль.' });
 
-    // Устанавливаем данные в сессию
+    // Сессия
     req.session.userId = user.id;
     req.session.userRole = user.role;
     req.session.username = username;
@@ -96,7 +98,8 @@ router.post('/login', async (req, res) => {
       userId: user.id,
       username,
       full_name: user.full_name,
-      phone_number: user.phone_number
+      phone_number: user.phone_number,
+      avatar_url: user.avatar_url || null
     });
   } catch (error) {
     console.error('Ошибка входа:', error);
@@ -105,8 +108,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ---------------------------------------------------
-// POST /api/auth/logout
-// Завершение сессии
+// POST /api/auth/logout — выход
 // ---------------------------------------------------
 router.post('/logout', (req, res) => {
   req.session.destroy(err => {
@@ -117,15 +119,14 @@ router.post('/logout', (req, res) => {
 });
 
 // ---------------------------------------------------
-// GET /api/auth/status
-// Текущий статус авторизации + базовый профиль
+// GET /api/auth/status — статус + профиль (с avatar_url)
 // ---------------------------------------------------
 router.get('/status', async (req, res) => {
-  if (!req.session.userId) return res.json({ isLoggedIn: false });
+  if (!req.session?.userId) return res.json({ isLoggedIn: false });
 
   try {
     const [users] = await pool.query(
-      'SELECT username, role, full_name, phone_number FROM users WHERE id = ?',
+      'SELECT username, role, full_name, phone_number, avatar_url FROM users WHERE id = ?',
       [req.session.userId]
     );
 
@@ -137,21 +138,20 @@ router.get('/status', async (req, res) => {
         userId: req.session.userId,
         username: user.username,
         full_name: user.full_name,
-        phone_number: user.phone_number
+        phone_number: user.phone_number,
+        avatar_url: user.avatar_url || null
       });
     } else {
-      req.session.destroy(() => {});
-      res.json({ isLoggedIn: false });
+      res.json({ isLoggedIn: true, role: req.session.userRole, userId: req.session.userId, username: req.session.username });
     }
   } catch (error) {
-    console.error('Ошибка получения статуса:', error);
-    res.status(500).json({ isLoggedIn: false, message: 'Ошибка сервера.' });
+    console.error('Ошибка /auth/status:', error);
+    res.status(500).json({ message: 'Ошибка сервера.' });
   }
 });
 
 // ---------------------------------------------------
-// GET /api/auth/admin-exists
-// Есть ли уже админ
+// GET /api/auth/admin-exists — есть ли уже админ
 // ---------------------------------------------------
 router.get('/admin-exists', async (_req, res) => {
   try {
@@ -165,8 +165,7 @@ router.get('/admin-exists', async (_req, res) => {
 });
 
 // ---------------------------------------------------
-// GET /api/auth/vapid-public-key
-// Публичный VAPID ключ (для подписки на фронте)
+// GET /api/auth/vapid-public-key — публичный ключ VAPID
 // ---------------------------------------------------
 router.get('/vapid-public-key', (_req, res) => {
   const pub = process.env.VAPID_PUBLIC_KEY || '';
@@ -175,8 +174,7 @@ router.get('/vapid-public-key', (_req, res) => {
 });
 
 // ---------------------------------------------------
-// POST /api/auth/save-subscription
-// Сохраняет push-подписку пользователя в БД
+// POST /api/auth/save-subscription — сохранить push-подписку
 // ---------------------------------------------------
 router.post('/save-subscription', isAuthenticated, async (req, res) => {
   const { subscription } = req.body;
@@ -194,8 +192,7 @@ router.post('/save-subscription', isAuthenticated, async (req, res) => {
 });
 
 // ---------------------------------------------------
-// POST /api/auth/update-profile
-// Обновление профиля пользователя (ФИО/Телефон)
+// POST /api/auth/update-profile — обновить ФИО/телефон
 // ---------------------------------------------------
 router.post('/update-profile', isAuthenticated, async (req, res) => {
   const { fullName, phoneNumber } = req.body;
@@ -210,6 +207,93 @@ router.post('/update-profile', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Ошибка обновления профиля:', error);
     res.status(500).json({ message: 'Ошибка сервера при обновлении данных.' });
+  }
+});
+
+// ======================== АВАТАР =========================
+
+// Хранилище для аватаров
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '..', 'uploads', 'avatars');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '.png') || '.png';
+    cb(null, `u${req.session.userId}-${Date.now()}${ext}`);
+  }
+});
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype))
+}).single('avatar');
+
+// POST /api/auth/upload-avatar — загрузка аватара текущего пользователя
+router.post('/upload-avatar', isAuthenticated, (req, res) => {
+  uploadAvatar(req, res, async (err) => {
+    if (err || !req.file) {
+      return res.status(400).json({ message: 'Ошибка загрузки аватара.' });
+    }
+    const relUrl = `/uploads/avatars/${req.file.filename}`;
+    try {
+      await pool.query('UPDATE users SET avatar_url = ? WHERE id = ?', [relUrl, req.session.userId]);
+      return res.json({ message: 'Аватар обновлен.', avatar_url: relUrl });
+    } catch (e) {
+      return res.status(500).json({ message: 'Ошибка сохранения аватара.' });
+    }
+  });
+});
+
+// ---------------------------------------------------
+// GET /api/auth/ticket-summary/:ticketId — сводка для хедера чата
+// Пользователь видит только модератора (без телефона), модератор — пользователя с телефоном.
+// ---------------------------------------------------
+router.get('/ticket-summary/:ticketId', isAuthenticated, async (req, res) => {
+  const ticketId = req.params.ticketId;
+  const myRole = req.session.userRole;
+  try {
+    const [tickets] = await pool.query(
+      'SELECT user_id, moderator_id FROM tickets WHERE id = ?',
+      [ticketId]
+    );
+    if (!tickets.length) return res.status(404).json({ message: 'Тикет не найден.' });
+
+    const t = tickets[0];
+    if (myRole === 'user') {
+      if (!t.moderator_id) return res.json({ moderator: null });
+      const [mods] = await pool.query(
+        'SELECT username, full_name, avatar_url FROM users WHERE id = ?',
+        [t.moderator_id]
+      );
+      const m = mods[0] || {};
+      return res.json({
+        moderator: {
+          username: m.username || null,
+          full_name: m.full_name || null,
+          avatar_url: m.avatar_url || null
+        }
+      });
+    } else {
+      // moderator/admin
+      const [users] = await pool.query(
+        'SELECT username, full_name, phone_number, avatar_url FROM users WHERE id = ?',
+        [t.user_id]
+      );
+      const u = users[0] || {};
+      return res.json({
+        user: {
+          username: u.username || null,
+          full_name: u.full_name || null,
+          phone_number: u.phone_number || null,
+          avatar_url: u.avatar_url || null
+        }
+      });
+    }
+  } catch (e) {
+    console.error('ticket-summary error:', e);
+    res.status(500).json({ message: 'Ошибка сервера.' });
   }
 });
 
