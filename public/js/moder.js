@@ -876,80 +876,92 @@ document.addEventListener('DOMContentLoaded', () => {
     m.preview && m.preview.classList.remove('show');
   });
 
-  // ===== Users =====
-  on(btnReloadUsers, 'click', loadUsers);
+// ===== Users =====
 
-  async function loadUsers(){
-    if (!usersTableBody) return;
-    try{
-      const res = await fetch(`${API_BASE}/admin/users`, { credentials:'include' });
-      if (res.status === 403){
-        usersTableBody.innerHTML = `<tr><td colspan="7">Нет прав для просмотра пользователей.</td></tr>`;
-        const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
-        return;
-      }
-      const users = res.ok ? await res.json() : [];
-      usersCache = users.slice();
-      usersTableBody.innerHTML = '';
-      for(const u of users){
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td data-label="ID">${u.id}</td>
-          <td data-label="Логин">${escapeHtml(u.username || '')}</td>
-          <td data-label="ФИО">${escapeHtml(u.full_name || '')}</td>
-          <td data-label="Телефон" class="col-phone">${escapeHtml(u.phone_number || '')}</td>
-          <td data-label="Роль">${escapeHtml(u.role || '')}</td>
-          <td data-label="Создан" class="col-created-users">${formatDateSafe(u.created_at)}</td>
-          <td data-label="Действие"><button class="btn small" data-edit="${u.id}">Изм.</button></td>
-        `;
-        usersTableBody.appendChild(tr);
-      }
-      const totalEl = byId('users-total'); totalEl && (totalEl.textContent = String(users.length));
-      usersTableBody.querySelectorAll('[data-edit]').forEach(btn=>{
-        btn.addEventListener('click', ()=> openEditUser(Number(btn.getAttribute('data-edit'))));
-      });
-    }catch(e){
-      console.warn(e);
-      usersTableBody.innerHTML = `<tr><td colspan="7">Ошибка загрузки списка пользователей</td></tr>`;
-      const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
-    }
-  }
-
+// --- Объявите функцию openEditUser выше loadUsers ---
+function openEditUser(userId){
+  const u = usersCache.find(x => Number(x.id) === Number(userId));
+  if (!u) { alert('Пользователь не найден'); return; }
+  editingUserId = u.id;
+  editTitle && (editTitle.textContent = `Редактирование пользователя #${u.id}`);
+  editFullname && (editFullname.value = u.full_name || '');
+  editPhone && (editPhone.value = u.phone_number || '');
+  editRole && (editRole.value = u.role || 'user');
+  showEditModal();
+}
   function showEditModal(){ if (!editModal) return; editModal.style.display='flex'; editModal.setAttribute('aria-hidden','false'); setTimeout(()=> editFullname?.focus(), 0); document.addEventListener('keydown', escCloseHandler); }
   function hideEditModal(){ if (!editModal) return; editModal.style.display='none'; editModal.setAttribute('aria-hidden','true'); editMsg && (editMsg.textContent=''); editingUserId=null; document.removeEventListener('keydown', escCloseHandler); }
   function escCloseHandler(e){ if (e.key==='Escape') hideEditModal(); }
   on(editClose, 'click', hideEditModal);
   on(editCancel, 'click', hideEditModal);
 
-  function openEditUser(userId){
-    const u = usersCache.find(x => Number(x.id) === Number(userId));
-    if (!u) { alert('Пользователь не найден'); return; }
-    editingUserId = u.id;
-    editTitle && (editTitle.textContent = `Редактирование пользователя #${u.id}`);
-    editFullname && (editFullname.value = u.full_name || '');
-    editPhone && (editPhone.value = u.phone_number || '');
-    editRole && (editRole.value = u.role || 'user');
-    showEditModal();
+on(btnReloadUsers, 'click', loadUsers);
+
+async function loadUsers(){
+  if (!usersTableBody) return;
+  try{
+    const res = await fetch('/api/admin/users', { credentials:'include' });
+    if (res.status === 403){
+      usersTableBody.innerHTML = `<tr><td colspan="6">Нет прав для просмотра пользователей.</td></tr>`;
+      const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
+      return;
+    }
+    const users = res.ok ? await res.json() : [];
+    users.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
+    usersCache = users.slice();
+    usersTableBody.innerHTML = '';
+    for(const u of users){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td data-label="Логин">${escapeHtml(u.username || '')}</td>
+        <td data-label="ФИО">${escapeHtml(u.full_name || '')}</td>
+        <td data-label="Телефон" class="col-phone">${escapeHtml(u.phone_number || '')}</td>
+        <td data-label="Роль">${escapeHtml(u.role || '')}</td>
+        <td data-label="Создан" class="col-created-users">${formatDateSafe(u.created_at)}</td>
+        <td data-label="Действие"><button class="btn small" data-edit="${u.id}">Изм.</button></td>
+      `;
+      usersTableBody.appendChild(tr);
+    }
+    const totalEl = byId('users-total'); totalEl && (totalEl.textContent = String(users.length));
+    usersTableBody.querySelectorAll('[data-edit]').forEach(btn=>{
+      btn.addEventListener('click', ()=> openEditUser(Number(btn.getAttribute('data-edit'))));
+    });
+  }catch(e){
+    console.warn(e);
+    usersTableBody.innerHTML = `<tr><td colspan="6">Ошибка загрузки списка пользователей</td></tr>`;
+    const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
   }
-  on(editSave, 'click', async ()=>{
-    if (!editingUserId) return;
-    try{
-      const payload = {
-        id: editingUserId,
-        full_name: editFullname?.value?.trim() || null,
-        phone_number: editPhone?.value?.trim() || null,
-        role: editRole?.value || null
-      };
-      const res = await fetch(`${API_BASE}/admin/update-user`, {
-        method:'POST', headers:{ 'Content-Type':'application/json' }, credentials:'include',
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Ошибка сохранения');
-      hideEditModal();
-      await loadUsers();
-    }catch(e){ editMsg && (editMsg.textContent = e.message || 'Ошибка'); }
-  });
+}
+
+// ===== Создание пользователя =====
+on(byId('btn-create-user'), 'click', async ()=>{
+  const username = byId('new-username').value.trim();
+  const password = byId('new-password').value.trim();
+  const full_name = byId('new-fullname').value.trim();
+  const phone_number = byId('new-phone').value.trim();
+  const role = byId('new-role').value;
+  const msg = byId('create-user-msg');
+
+  if (!username || !password || !full_name || !phone_number) {
+    msg.textContent = 'Заполните все поля!';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/create-user', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, full_name, phone_number, role })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Ошибка создания пользователя');
+    msg.textContent = 'Пользователь создан!';
+    await loadUsers();
+  } catch(e) {
+    msg.textContent = e.message || 'Ошибка';
+  }
+});
 
   // ===== Профиль: режим редактирования =====
   function setProfileEditMode(onMode){
