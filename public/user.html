@@ -95,6 +95,20 @@
         .message-item .attach img { display: block; max-width: 240px; border-radius: 8px; cursor: zoom-in; }
         .message-item .attach video { display: block; max-width: 240px; border-radius: 8px; }
 
+        /* Аватар внутри сообщения — маленький круг, не как вложение */
+        .message-item > img.avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            display: inline-block;
+            vertical-align: middle;
+            margin: 0 8px 4px 0;
+            max-width: none;
+            cursor: default;
+            box-shadow: none;
+        }
+
         /* Лайтбокс для изображений */
         .lightbox-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -766,7 +780,7 @@
                     fd.set('subject', subjectWithRoom);
                     fd.set('description', description);
                     pendingTicketFiles.forEach(f => fd.append('attachments', f));
-                    // ВАЖНО: больше не отправляем fallback 'attachment'
+                    // без fallback-поля
                     res = await fetch(`${API_BASE}/tickets/create`, { method: 'POST', body: fd, credentials: 'include' });
                 } else {
                     res = await fetch(`${API_BASE}/tickets/create`, {
@@ -1013,9 +1027,21 @@
 
             if (!self) {
                 const img = document.createElement('img');
-                img.className = 'avatar avatar-sm';
+                img.className = 'avatar';
                 img.alt = 'Фото';
                 img.src = msg.senderAvatarUrl || '/icons/user-placeholder.png';
+                // Явные размеры/вид для аватара (не вкладка-вложение)
+                img.style.width = '28px';
+                img.style.height = '28px';
+                img.style.borderRadius = '50%';
+                img.style.objectFit = 'cover';
+                img.style.display = 'inline-block';
+                img.style.verticalAlign = 'middle';
+                img.style.marginRight = '8px';
+                img.style.marginBottom = '4px';
+                img.style.maxWidth = 'none';
+                img.style.cursor = 'default';
+                img.style.boxShadow = 'none';
                 div.appendChild(img);
             }
 
@@ -1183,7 +1209,6 @@
                         fd.set('ticketId', String(activeTicketId));
                         if (i === 0 && text) fd.set('messageText', text);
                         fd.set('clientMessageId', genIdempKey());
-                        // ВАЖНО: шлём только attachments (без fallback 'attachment')
                         fd.append('attachments', f);
 
                         const res = await fetch(`${API_BASE}/tickets/messages/send`, { method: 'POST', body: fd, credentials: 'include' });
@@ -1194,7 +1219,12 @@
                         }
                     }
                 } else {
-                    socket.emit('sendMessage', { ticketId: activeTicketId, messageText: text });
+                    const fd = new FormData();
+                    fd.set('ticketId', String(activeTicketId));
+                    fd.set('messageText', text);
+                    fd.set('clientMessageId', genIdempKey());
+                    const res = await fetch(`${API_BASE}/tickets/messages/send`, { method: 'POST', body: fd, credentials: 'include' });
+                    if (!res.ok) throw new Error(await res.text() || `Ошибка (${res.status})`);
                 }
 
                 rememberSig(sig, 10000);

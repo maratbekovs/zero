@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Панель Модератора | ZERO Help Desk</title>
     <!-- iOS PWA -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="ZERO">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="ZERO">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-<link rel="apple-touch-icon" sizes="57x57"   href="/icons/apple-touch-icon-57.png">
-<link rel="apple-touch-icon" sizes="60x60"   href="/icons/apple-touch-icon-60.png">
-<link rel="apple-touch-icon" sizes="72x72"   href="/icons/apple-touch-icon-72.png">
-<link rel="apple-touch-icon" sizes="76x76"   href="/icons/apple-touch-icon-76.png">
-<link rel="apple-touch-icon" sizes="114x114" href="/icons/apple-touch-icon-114.png">
-<link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon-120.png">
-<link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152.png">
-<link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-touch-icon-167.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png">
+    <link rel="apple-touch-icon" sizes="57x57"   href="/icons/apple-touch-icon-57.png">
+    <link rel="apple-touch-icon" sizes="60x60"   href="/icons/apple-touch-icon-60.png">
+    <link rel="apple-touch-icon" sizes="72x72"   href="/icons/apple-touch-icon-72.png">
+    <link rel="apple-touch-icon" sizes="76x76"   href="/icons/apple-touch-icon-76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/icons/apple-touch-icon-114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon-120.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-touch-icon-167.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png">
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/css/styles.css">
     <style>
@@ -48,6 +48,19 @@
             background:var(--bg);
             color:var(--text);
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        }
+
+        /* Глобальный баннер уведомлений (минимально) */
+        #notify-banner{
+            display:none;
+            position:sticky; top:0; z-index:1002;
+            background:#fff3cd; color:#8a6d3b;
+            border-top:1px solid #ffe8a1; border-bottom:1px solid #ffe8a1;
+            padding:8px 12px; font-size:13px;
+        }
+        #notify-banner .actions{ display:inline-flex; gap:8px; margin-left:10px; }
+        #notify-banner .btn-mini{
+            background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px;
         }
 
         .mobile-header{
@@ -111,7 +124,9 @@
         .btn.small{ padding:8px 12px; font-size:13px; }
 
         .chips{ display:flex; gap:8px; flex-wrap:wrap; }
-        .chip{ font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; }
+        .chip{ font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; cursor:default; }
+        .chip.toggle{ cursor:pointer; user-select:none; }
+        .chip.toggle.active{ background:var(--primary); color:#fff; border-color:var(--primary); }
 
         .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; }
         .card{ background:#fff; border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
@@ -126,9 +141,13 @@
 
         .status{ display:inline-block; padding:6px 10px; border-radius:999px; color:#fff; font-weight:600; font-size:12px; line-height:1; }
         .s-New{ background:var(--primary); }
-        .s-In\ Progress{ background:var(--warning); }
+        /* Безопасные классы без пробелов */
+        .s-InProgress{ background:var(--warning); }
+        .s-OnHold{ background:#7209b7; }
         .s-Successful{ background:var(--success); }
         .s-Rejected{ background:var(--danger); }
+        /* Совместимость со старыми селекторами (если встречаются) */
+        .s-In\ Progress{ background:var(--warning); }
         .s-On\ Hold{ background:#7209b7; }
 
         /* Desktop chat panel */
@@ -143,9 +162,40 @@
         .msg.other{ align-self:flex-start; background:#f1f5f9; color:var(--text); border-bottom-left-radius:6px; }
         .msg .meta{ font-size:12px; opacity:.8; }
         .msg .attach img, .msg .attach video{ max-width:280px; border-radius:10px; display:block; }
+        /* Отступы и подпись */
+        .msg .attach{ margin:4px 8px 8px 0; display:inline-block; }
+        .msg .attach .cap{ font-size:12px; color:#6c757d; margin-top:4px; }
 
-        .chat-actions{ border-top:1px solid var(--border); padding:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#fff; }
-        .chat-actions .input{ flex:1; }
+        /* Компактная панель действий в чате (как мобильная) */
+        .chat-actions{
+            border-top:1px solid var(--border);
+            padding:12px;
+            display:flex;
+            gap:8px;
+            align-items:center;
+            flex-wrap:nowrap;
+            background:#fff;
+        }
+        .chat-actions .input{
+            flex:1; min-width:0;
+        }
+        /* Кнопка "плюс" (вложения) — всегда видна и компактная */
+        .dattach-toggle{
+            display:flex;
+            background:#fff; border:1px solid var(--border); color:var(--text);
+            width:42px; height:42px; border-radius:12px; align-items:center; justify-content:center; font-size:20px; cursor:pointer;
+        }
+        .dattach-menu{
+            position:absolute; z-index:3;
+            background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-lg);
+            padding:8px; display:none; gap:8px; align-items:center;
+        }
+        .dattach-menu.open{ display:flex; }
+        /* Кнопка отправки — компактная иконка */
+        #chat-send-button{
+            width:42px; height:42px; border-radius:12px; padding:0;
+            display:flex; align-items:center; justify-content:center; font-size:18px;
+        }
 
         .preview{ background:#f8fafc; border:1px dashed var(--border); border-radius:10px; padding:10px; display:none; gap:10px; align-items:center; }
         .preview.show{ display:flex; }
@@ -199,6 +249,8 @@
         .mmsg.other{ align-self:flex-start; background:#f1f5f9; color:var(--text); border-bottom-left-radius:6px; }
         .mmsg .meta{ font-size:11px; opacity:.85; }
         .mmsg .attach img, .mmsg .attach video{ max-width:70vw; border-radius:10px; display:block; }
+        .mmsg .attach{ margin:4px 8px 8px 0; display:inline-block; }
+        .mmsg .attach .cap{ font-size:11px; color:#6c757d; margin-top:4px; }
 
         .mchat-actions{
             position:sticky; bottom:0; z-index:2; background:#fff; border-top:1px solid var(--border);
@@ -247,10 +299,25 @@
         .modal-body .stack{ display:flex; flex-direction:column; gap:14px; }
         .modal-footer{ padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; justify-content:flex-end; }
 
-        @media (max-width: 1100px){
-            .grid{ grid-template-columns:1fr; }
-            .chat{ height:auto; }
+        /* Лайтбокс */
+        .lightbox-overlay{
+            position:fixed; inset:0; background:rgba(0,0,0,.85);
+            display:none; align-items:center; justify-content:center;
+            z-index:1010;
         }
+        .lightbox-overlay.open{ display:flex; }
+        .lightbox-content{ position:relative; max-width:95vw; max-height:95vh; }
+        .lightbox-img{ max-width:95vw; max-height:95vh; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.4); }
+        .lightbox-close{
+            position:absolute; top:-10px; right:-10px; width:36px; height:36px;
+            border-radius:50%; border:none; background:rgba(0,0,0,0.6); color:#fff;
+            cursor:pointer; display:flex; align-items:center; justify-content:center;
+            font-size:18px; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,.4);
+        }
+
+        /* Скрыть упоминания ID */
+        .ui-hide-id{ display:none !important; }
+
         @media (max-width: 768px){
             .mobile-header{ display:flex; }
             .sidebar{ display:none !important; }
@@ -267,13 +334,22 @@
             th,td{ padding:10px; font-size:13px; }
             #tickets-table th.col-user, #tickets-table td.col-user,
             #tickets-table th.col-created, #tickets-table td.col-created { display:none; }
-            /* В разделе "Пользователи" показываем все поля (responsive-карточки) */
             #report-table th.col-moderator, #report-table td.col-moderator,
             #report-table th.col-closed, #report-table td.col-closed { display:none; }
         }
     </style>
 </head>
 <body>
+    <!-- Глобальный баннер уведомлений -->
+    <div id="notify-banner">
+        Включите уведомления, чтобы не пропускать новые сообщения.
+        <span class="actions">
+            <button id="nb-enable" class="btn-mini">Включить</button>
+            <button id="nb-settings" class="btn-mini" style="display:none;">Открыть настройки</button>
+            <button id="nb-close" class="btn-mini">Скрыть</button>
+        </span>
+    </div>
+
     <div class="mobile-header">
         <h1 class="title">ZERO 🛡️ Help Desk — Модератор</h1>
     </div>
@@ -302,7 +378,7 @@
             <!-- TICKETS -->
             <section class="section active" id="sec-tickets">
                 <div class="toolbar">
-                    <div class="row">
+                    <div class="row" style="display:flex; gap:8px; flex-wrap:wrap;">
                         <input class="input" id="search" placeholder="Поиск по теме/пользователю..."/>
                         <select id="filter-status" class="input">
                             <option value="">Все статусы</option>
@@ -315,6 +391,10 @@
                         <button class="btn" id="btn-reload">Обновить</button>
                     </div>
                     <div class="chips">
+                        <!-- Переключатель области -->
+                        <span id="scope-all" class="chip toggle active">Все</span>
+                        <span id="scope-my" class="chip toggle">Мои</span>
+                        <!-- Статистические счётчики -->
                         <span class="chip">Всего: <span id="stat-total">0</span></span>
                         <span class="chip">Новые: <span id="stat-new">0</span></span>
                         <span class="chip">В работе: <span id="stat-ip">0</span></span>
@@ -346,14 +426,14 @@
                     <div class="card chat" id="chat-panel">
                         <div class="chat-head">
                             <div>
-                                <h3 class="chat-title">Чат: <span id="chat-ticket-id">—</span></h3>
+                                <h3 class="chat-title">Чат: <span class="ui-hide-id" id="chat-ticket-id">—</span></h3>
                                 <div class="chat-meta">
                                     Тема: <span id="chat-ticket-subject">—</span><br/>
-                                    Клиент ID: <span id="chat-user-id">—</span> • Текущий статус: <strong id="current-status">—</strong>
+                                    <span class="ui-hide-id">Клиент ID: <span id="chat-user-id">—</span> • </span>Текущий статус: <strong id="current-status">—</strong>
                                 </div>
                             </div>
                             <div>
-                                <div class="row">
+                                <div class="row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                     <select id="status-select" class="input">
                                         <option value="In Progress">В работе</option>
                                         <option value="On Hold">На согласовании</option>
@@ -372,16 +452,22 @@
 
                         <div id="chat-box" class="chat-box"></div>
 
-                        <div class="card-body" style="border-top:1px solid var(--border);">
+                        <div class="card-body" style="border-top:1px solid var(--border); position:relative;">
                             <div class="stack">
                                 <div class="chat-actions" id="chat-actions">
                                     <input class="input" id="chat-input" placeholder="Ваш ответ...">
                                     <input type="file" id="chat-attachment" multiple accept="image/*,video/*" style="display:none;">
-                                    <button class="btn ghost" id="btn-pick">📎 Файл</button>
-                                    <button class="btn ghost" id="btn-photo">📷 Фото</button>
-                                    <button class="btn ghost" id="btn-video">🎥 Видео</button>
-                                    <button class="btn" id="chat-send-button">Отправить</button>
+                                    <!-- Компактная кнопка (всегда как на мобильном) -->
+                                    <button class="dattach-toggle" id="d-attach-toggle" aria-label="Вложения">＋</button>
+                                    <div class="dattach-menu" id="d-attach-menu" role="menu" aria-hidden="true" style="right:12px; bottom:58px;">
+                                        <button class="btn ghost" id="dbtn-pick">📎 Файл</button>
+                                        <button class="btn ghost" id="dbtn-photo">📷 Фото</button>
+                                        <button class="btn ghost" id="dbtn-video">🎥 Видео</button>
+                                    </div>
+                                    <!-- Компактная отправка -->
+                                    <button class="btn" id="chat-send-button" title="Отправить" aria-label="Отправить">➤</button>
                                 </div>
+
                                 <div class="preview" id="preview">
                                     <div id="preview-thumb"></div>
                                     <div class="row">
@@ -457,17 +543,12 @@
             <!-- REPORTS -->
             <section class="section" id="sec-reports">
                 <div class="toolbar">
-                    <div class="row">
-                        <!-- Внутри секции Отчётов (sec-reports) в moder.html, в блоке toolbar -->
-                        <button class="btn" id="btn-archive" onclick="window.location.href='/moder-archive.html'">
-  Архив завершённых заявок
-</button>
-
+                    <div class="row" style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn" id="btn-archive" onclick="window.location.href='/moder-archive.html'">Архив завершённых заявок</button>
                         <input type="date" class="date" id="start_date" />
                         <input type="date" class="date" id="end_date" />
                         <button class="btn" id="btn-make-report">Сформировать</button>
                         <button class="btn ghost" id="btn-print" disabled>Печать</button>
-                        
                     </div>
                 </div>
 
@@ -509,9 +590,34 @@
                 <div class="card">
                     <div class="card-body">
                         <h3>Мой профиль</h3>
+
+                        <div class="row" style="align-items:center; gap:10px; margin:8px 0 6px;">
+                            <img id="profile-avatar" alt="Аватар" src="/icons/user-placeholder.png" style="width:72px;height:72px;border-radius:50%;object-fit:cover;">
+                            <div class="muted">
+                                <div>ФИО: <strong id="profile-fullname">—</strong></div>
+                                <div>Телефон: <strong id="profile-phone">—</strong></div>
+                            </div>
+                        </div>
+
                         <p class="muted">Вы вошли как: <strong id="profile-username">—</strong> (<span id="profile-role">—</span>)</p>
-                        <div class="row">
+
+                        <div class="row" style="gap:8px; flex-wrap:wrap;">
+                            <button class="btn" id="profile-edit-toggle">Редактировать</button>
+                            <button class="btn success" id="profile-save" style="display:none;">Сохранить</button>
+                            <button class="btn ghost" id="profile-cancel" style="display:none;">Отмена</button>
                             <button class="btn danger" id="logout-2">Выйти</button>
+                        </div>
+
+                        <div id="profile-edit-panel" style="display:none; margin-top:14px;">
+                            <div class="stack" style="gap:10px;">
+                                <input id="prof-fullname" class="input" type="text" placeholder="ФИО">
+                                <input id="prof-phone" class="input" type="text" placeholder="Телефон">
+                                <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <input type="file" id="prof-avatar" accept="image/*" style="display:none;">
+                                    <button class="btn ghost" id="prof-avatar-pick">Выбрать аватар</button>
+                                    <span class="muted" id="prof-avatar-msg"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -519,7 +625,7 @@
         </main>
     </div>
 
-    <!-- Fixed mobile bottom tabs -->
+    <!-- Fixed mobile tabs -->
     <div class="mobile-tab-bar" id="mobile-tab-bar">
         <a href="#" class="tab-item active" data-section="tickets"><i>🎫</i><span>Заявки</span></a>
         <a href="#" class="tab-item" data-section="users"><i>👥</i><span>Польз.</span></a>
@@ -527,12 +633,12 @@
         <a href="#" class="tab-item" data-section="profile"><i>👤</i><span>Профиль</span></a>
     </div>
 
-    <!-- Mobile chat modal (телефон) -->
+    <!-- Mobile chat modal -->
     <div class="mchat-modal" id="mchat-modal">
         <div class="mchat-wrap">
             <div class="mchat-head">
                 <div>
-                    <h3 class="mchat-title">Чат #<span id="mchat-ticket-id">—</span></h3>
+                    <h3 class="mchat-title">Чат <span class="ui-hide-id">#<span id="mchat-ticket-id">—</span></span></h3>
                     <div class="mchat-sub">Тема: <span id="mchat-ticket-subject">—</span> • Статус: <strong id="mchat-status">—</strong></div>
                 </div>
                 <button class="mchat-close" id="mchat-close" aria-label="Закрыть чат">✕</button>
@@ -561,7 +667,6 @@
                 <button class="mattach-toggle" id="mattach-toggle" aria-label="Вложения">＋</button>
                 <button class="btn" id="mchat-send" title="Отправить" aria-label="Отправить">➤</button>
 
-                <!-- Popover меню вложений -->
                 <div class="mattach-menu" id="mattach-menu" role="menu" aria-hidden="true">
                     <button class="btn ghost" id="mbtn-pick">📎 Файл</button>
                     <button class="btn ghost" id="mbtn-photo">📷 Фото</button>
@@ -614,5 +719,13 @@
     <!-- Локальный клиент Socket.IO -->
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="/js/moder.js"></script>
+
+    <!-- Лайтбокс -->
+    <div id="lightbox" class="lightbox-overlay" aria-hidden="true">
+        <div class="lightbox-content">
+            <img id="lightbox-img" class="lightbox-img" alt="Просмотр изображения">
+            <button id="lightbox-close" class="lightbox-close" aria-label="Закрыть">×</button>
+        </div>
+    </div>
 </body>
 </html>
