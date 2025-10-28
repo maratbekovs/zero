@@ -500,12 +500,13 @@
                                 <table id="users-table" class="responsive">
                                     <thead>
                                     <tr>
+                                        <th>ID</th>
                                         <th>Логин</th>
-<th>ФИО</th>
-<th class="col-phone">Телефон</th>
-<th>Роль</th>
-<th class="col-created-users">Создан</th>
-<th>Действие</th>
+                                        <th>ФИО</th>
+                                        <th class="col-phone">Телефон</th>
+                                        <th>Роль</th>
+                                        <th class="col-created-users">Создан</th>
+                                        <th>Действие</th>
                                     </tr>
                                     </thead>
                                     <tbody></tbody>
@@ -681,39 +682,51 @@
     </div>
 
     <!-- Модалка редактирования пользователя -->
-    <div class="modal-overlay" id="edit-user-modal" aria-hidden="true">
-        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
-            <div class="modal-head">
-                <h3 class="modal-title" id="edit-user-title">Редактирование пользователя</h3>
-                <button class="modal-close" id="edit-user-close" aria-label="Закрыть">✕</button>
-            </div>
-            <div class="modal-body">
-                <div id="edit-user-message" class="muted"></div>
-                <div class="stack">
-                    <div>
-                        <label for="edit-user-username" class="muted" style="display:block; margin-bottom:6px;">Логин (только чтение)</label>
-                        <input id="edit-user-username" class="input" type="text" disabled>
-                    </div>
-                    <div>
-                        <label for="edit-user-fullname" style="display:block; margin-bottom:6px;">ФИО</label>
-                        <input id="edit-user-fullname" class="input" type="text" placeholder="Введите ФИО">
-                    </div>
-                    <div>
-                        <label for="edit-user-phone" style="display:block; margin-bottom:6px;">Телефон</label>
-                        <input id="edit-user-phone" class="input" type="text" placeholder="+7 ...">
-                    </div>
-                    <div>
-                        <label for="edit-user-role" class="muted" style="display:block; margin-bottom:6px;">Роль (только чтение)</label>
-                        <input id="edit-user-role" class="input" type="text" disabled>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn ghost" id="edit-user-cancel">Отмена</button>
-                <button class="btn" id="edit-user-save">Сохранить</button>
-            </div>
-        </div>
+<div class="modal-overlay" id="edit-user-modal" aria-hidden="true">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
+    <div class="modal-head">
+      <h3 class="modal-title" id="edit-user-title">Редактирование пользователя</h3>
+      <button class="modal-close" id="edit-user-close" aria-label="Закрыть">✕</button>
     </div>
+
+    <div class="modal-body">
+      <div id="edit-user-message" class="muted"></div>
+      <div class="stack">
+        <div>
+          <label for="edit-user-username" class="muted" style="display:block; margin-bottom:6px;">Логин (только чтение)</label>
+          <input id="edit-user-username" class="input" type="text" disabled>
+        </div>
+
+        <div>
+          <label for="edit-user-fullname" style="display:block; margin-bottom:6px;">ФИО</label>
+          <input id="edit-user-fullname" class="input" type="text" placeholder="Введите ФИО">
+        </div>
+
+        <div>
+          <label for="edit-user-phone" style="display:block; margin-bottom:6px;">Телефон</label>
+          <input id="edit-user-phone" class="input" type="text" placeholder="+7 ...">
+        </div>
+
+        <div>
+          <label for="edit-user-role" class="muted" style="display:block; margin-bottom:6px;">Роль (только чтение)</label>
+          <input id="edit-user-role" class="input" type="text" disabled>
+        </div>
+
+        <!-- 🔥 Новое поле для изменения пароля -->
+        <div>
+          <label for="edit-password" style="display:block; margin-bottom:6px;">Новый пароль</label>
+          <input id="edit-password" class="input" type="password" placeholder="Оставьте пустым, чтобы не менять">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn ghost" id="edit-user-cancel">Отмена</button>
+      <button class="btn" id="edit-user-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 
     <!-- Локальный клиент Socket.IO -->
     <script src="/socket.io/socket.io.js"></script>

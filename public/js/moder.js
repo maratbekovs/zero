@@ -877,42 +877,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 // ===== Users =====
-
-// --- Объявите функцию openEditUser выше loadUsers ---
-function openEditUser(userId){
-  const u = usersCache.find(x => Number(x.id) === Number(userId));
-  if (!u) { alert('Пользователь не найден'); return; }
-  editingUserId = u.id;
-  editTitle && (editTitle.textContent = `Редактирование пользователя #${u.id}`);
-  editFullname && (editFullname.value = u.full_name || '');
-  editPhone && (editPhone.value = u.phone_number || '');
-  editRole && (editRole.value = u.role || 'user');
-  showEditModal();
-}
-  function showEditModal(){ if (!editModal) return; editModal.style.display='flex'; editModal.setAttribute('aria-hidden','false'); setTimeout(()=> editFullname?.focus(), 0); document.addEventListener('keydown', escCloseHandler); }
-  function hideEditModal(){ if (!editModal) return; editModal.style.display='none'; editModal.setAttribute('aria-hidden','true'); editMsg && (editMsg.textContent=''); editingUserId=null; document.removeEventListener('keydown', escCloseHandler); }
-  function escCloseHandler(e){ if (e.key==='Escape') hideEditModal(); }
-  on(editClose, 'click', hideEditModal);
-  on(editCancel, 'click', hideEditModal);
-
 on(btnReloadUsers, 'click', loadUsers);
 
 async function loadUsers(){
   if (!usersTableBody) return;
   try{
-    const res = await fetch('/api/admin/users', { credentials:'include' });
+    const res = await fetch(`${API_BASE}/admin/users`, { credentials:'include' });
     if (res.status === 403){
-      usersTableBody.innerHTML = `<tr><td colspan="6">Нет прав для просмотра пользователей.</td></tr>`;
+      usersTableBody.innerHTML = `<tr><td colspan="7">Нет прав для просмотра пользователей.</td></tr>`;
       const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
       return;
     }
     const users = res.ok ? await res.json() : [];
-    users.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
     usersCache = users.slice();
     usersTableBody.innerHTML = '';
     for(const u of users){
       const tr = document.createElement('tr');
       tr.innerHTML = `
+        <td data-label="ID">${u.id}</td>
         <td data-label="Логин">${escapeHtml(u.username || '')}</td>
         <td data-label="ФИО">${escapeHtml(u.full_name || '')}</td>
         <td data-label="Телефон" class="col-phone">${escapeHtml(u.phone_number || '')}</td>
@@ -923,45 +905,110 @@ async function loadUsers(){
       usersTableBody.appendChild(tr);
     }
     const totalEl = byId('users-total'); totalEl && (totalEl.textContent = String(users.length));
+
     usersTableBody.querySelectorAll('[data-edit]').forEach(btn=>{
       btn.addEventListener('click', ()=> openEditUser(Number(btn.getAttribute('data-edit'))));
     });
   }catch(e){
     console.warn(e);
-    usersTableBody.innerHTML = `<tr><td colspan="6">Ошибка загрузки списка пользователей</td></tr>`;
+    usersTableBody.innerHTML = `<tr><td colspan="7">Ошибка загрузки списка пользователей</td></tr>`;
     const totalEl = byId('users-total'); totalEl && (totalEl.textContent = '0');
   }
 }
 
-// ===== Создание пользователя =====
-on(byId('btn-create-user'), 'click', async ()=>{
-  const username = byId('new-username').value.trim();
-  const password = byId('new-password').value.trim();
-  const full_name = byId('new-fullname').value.trim();
-  const phone_number = byId('new-phone').value.trim();
-  const role = byId('new-role').value;
-  const msg = byId('create-user-msg');
-
-  if (!username || !password || !full_name || !phone_number) {
-    msg.textContent = 'Заполните все поля!';
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/admin/create-user', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, full_name, phone_number, role })
+on(btnCreateUser, 'click', async ()=>{
+  if (!createUserMsg) return;
+  createUserMsg.textContent = '';
+  try{
+    const payload = {
+      username: byId('new-username')?.value.trim(),
+      password: byId('new-password')?.value,
+      role: byId('new-role')?.value,
+      full_name: byId('new-fullname')?.value?.trim() || null,
+      phone_number: byId('new-phone')?.value?.trim() || null
+    };
+    const res = await fetch(`${API_BASE}/admin/create-user`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      credentials:'include',
+      body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Ошибка создания пользователя');
-    msg.textContent = 'Пользователь создан!';
+    const data = res.ok ? await res.json() : { message: await res.text() };
+    if (!res.ok) throw new Error(data.message || `Ошибка (${res.status})`);
+    createUserMsg.textContent = data.message || 'Создано';
     await loadUsers();
-  } catch(e) {
-    msg.textContent = e.message || 'Ошибка';
+  }catch(e){
+    createUserMsg.textContent = e.message || 'Ошибка создания';
   }
 });
+
+function showEditModal(){
+  if (!editModal) return;
+  editModal.style.display = 'flex';
+  editModal.setAttribute('aria-hidden','false');
+  setTimeout(()=> editFullname?.focus(), 0);
+  document.addEventListener('keydown', escCloseHandler);
+}
+
+function hideEditModal(){
+  if (!editModal) return;
+  editModal.style.display = 'none';
+  editModal.setAttribute('aria-hidden','true');
+  editMsg && (editMsg.textContent = '');
+  editingUserId = null;
+  document.removeEventListener('keydown', escCloseHandler);
+}
+
+function escCloseHandler(e){
+  if (e.key === 'Escape') hideEditModal();
+}
+
+on(editClose, 'click', hideEditModal);
+on(editCancel, 'click', hideEditModal);
+
+function openEditUser(userId){
+  const u = usersCache.find(x => Number(x.id) === Number(userId));
+  if (!u) { alert('Пользователь не найден'); return; }
+  editingUserId = u.id;
+  editTitle && (editTitle.textContent = `Редактирование пользователя #${u.id}`);
+  if (editFullname) editFullname.value = u.full_name || '';
+  if (editPhone) editPhone.value = u.phone_number || '';
+  if (editRole) editRole.value = u.role || 'user';
+  showEditModal();
+}
+
+on(editSave, 'click', async ()=>{
+  if (!editingUserId) return;
+  try{
+    const payload = {
+      userId: editingUserId,
+      fullName: editFullname?.value?.trim() || null,
+      phoneNumber: editPhone?.value?.trim() || null,
+      newPassword: byId('edit-password')?.value?.trim() || null
+    };
+
+    const res = await fetch(`${API_BASE}/tickets/update-user-info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Ошибка сохранения');
+
+    // Очистим поле пароля после сохранения
+    const pwdField = byId('edit-password');
+    if (pwdField) pwdField.value = '';
+
+    hideEditModal();
+    await loadUsers();
+  } catch(e){
+    if (editMsg) editMsg.textContent = e.message || 'Ошибка';
+  }
+});
+
+
 
   // ===== Профиль: режим редактирования =====
   function setProfileEditMode(onMode){

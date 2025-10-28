@@ -645,4 +645,38 @@ router.post('/assign', isAdmin, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/tickets/update-user-info
+ * Изменить ФИО, телефон и пароль пользователя (модераторы/админы)
+ */
+router.post('/update-user-info', isModeratorOrAdmin, async (req, res) => {
+  const { userId, full_name = null, phone_number = null, password = null } = req.body || {};
+  
+  if (!userId) {
+    return res.status(400).json({ message: 'Требуется ID пользователя.' });
+  }
+
+  try {
+    // 1️⃣ Обновляем ФИО и телефон
+    await pool.query(
+      'UPDATE users SET full_name = ?, phone_number = ? WHERE id = ?',
+      [full_name || null, phone_number || null, userId]
+    );
+
+    // 2️⃣ Если указан новый пароль — хэшируем через hashPassword и обновляем
+    if (password && password.trim() !== '') {
+      const password_hash = await hashPassword(password.trim());
+      await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, userId]);
+    }
+
+    return res.json({ message: `✅ Данные пользователя ID ${userId} успешно обновлены.` });
+  } catch (error) {
+    console.error('Ошибка обновления данных пользователя:', error);
+    return res.status(500).json({ message: 'Ошибка сервера при обновлении данных пользователя.' });
+  }
+});
+
+
+
+
 module.exports = router;
